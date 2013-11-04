@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 import operator
+import llvm
+import llvm.core
+import llvm.ee
 
 prompt = ">"
 
@@ -19,7 +22,7 @@ def strip_outer_parens(parts):
 
 
 def parse(x):
-    print x
+    #print x
     parts = x.split()
     if not parts:
         return '' # FIXME
@@ -43,10 +46,42 @@ def evaluate(aparse):
         return aparse
     else:
         afunc = lookup(aparse[0])
+        comp_mod = compile(afunc, aparse[1], aparse[2])
+        print "compiled is %s" % comp_mod[0]
+        executed = execute(comp_mod[0], comp_mod[1], aparse[1], aparse[2])
+        print "executed is %s" % executed
         return applyit(afunc, aparse[1:])
 
+def execute(module, llvmfunc, arg1, arg2):
+    ee = llvm.ee.ExecutionEngine.new(module)
+    ldouble = llvm.core.Type.double()
+    a1 = llvm.ee.GenericValue.real(ldouble, arg1)
+    a2 = llvm.ee.GenericValue.real(ldouble, arg2)
+    
+    retval = ee.run_function(llvmfunc, [a1, a2])
+    print "retval is %s" % retval
+    return retval
+
+def compile(afunc, arg1, arg2): # FIXME; should this take the module as an arg?
+    lisp_module = llvm.core.Module.new("minilispmod")
+    ldouble = llvm.core.Type.double()
+    two_arg_func = llvm.core.Type.function(ldouble, [ldouble, ldouble])
+    
+    f = lisp_module.add_function(two_arg_func, afunc.__name__)
+    #print dir(f.args[0])
+    f.args[0] = arg1
+    f.args[1] = arg2
+
+    bb = f.append_basic_block("entry")
+    builder = llvm.core.Builder.new(bb)
+    #print dir(builder)
+    tmp = getattr(builder, afunc.__name__)(f.args[0], f.args[1], "tmpwhy")
+    builder.ret(tmp)
+
+    return (lisp_module, f)
+
 def lookup(afunc): # FIXME
-    funcs = {'+':operator.add}
+    funcs = {'+':operator.add, '*':operator.mul}
     if afunc in funcs:
         return funcs[afunc]
     else:
