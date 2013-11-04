@@ -31,46 +31,70 @@ def parse(x):
         if len(parts) > 1:
             raise ValueError("Parse error (too many parts) on %s" % x)
         if parts[0] in '0123456789':
-            return float(parts[0])
+            return int(parts[0])
         else:
             return parts[0]
     else:
         parts = strip_outer_parens(parts)
         return (map(parse, parts))
     
+def compile_and_execute(afunc, args):
+    afn = afunc.__name__
+    a1 = args[0]
+    a2 = args[1]
+
+    if not hasattr(compile_and_execute, 'compiled_functions'):
+        compile_and_execute.compiled_functions = {}
+    cf = compile_and_execute.compiled_functions
+
+    if afn not in cf:
+        (module, compiled_func) = compile(afunc, a1, a2)
+        cf[afn] = (module, compiled_func)
+        #print "compiled is %s" % comp_mod[0]
+    else:
+        print "Function cache hit!"
+    executed = execute(cf[afn][0], cf[afn][1], a1, a2)
+    #print "executed is %s" % executed.as_int()
+    return executed
+
+
 def applyit(afunc, args):
     return apply(afunc, args[:2]) # FIXME
 
-def evaluate(aparse):
+def evaluate(aparse, compiled_funcs=None):
     if not isinstance(aparse, [].__class__):
         return aparse
     else:
         afunc = lookup(aparse[0])
-        comp_mod = compile(afunc, aparse[1], aparse[2])
-        print "compiled is %s" % comp_mod[0]
-        executed = execute(comp_mod[0], comp_mod[1], aparse[1], aparse[2])
-        print "executed is %s" % executed
+        ret = compile_and_execute(afunc, aparse[1:3])
+
+        #comp_mod = compile(afunc, aparse[1], aparse[2])
+        #print "compiled is %s" % comp_mod[0]
+        #executed = execute(comp_mod[0], comp_mod[1], aparse[1], aparse[2])
+        print "executed is %s" % ret.as_int()
         return applyit(afunc, aparse[1:])
 
 def execute(module, llvmfunc, arg1, arg2):
     ee = llvm.ee.ExecutionEngine.new(module)
-    ldouble = llvm.core.Type.double()
-    a1 = llvm.ee.GenericValue.real(ldouble, arg1)
-    a2 = llvm.ee.GenericValue.real(ldouble, arg2)
-    
+    lint = llvm.core.Type.int()
+    a1 = llvm.ee.GenericValue.int(lint, arg1)
+    a2 = llvm.ee.GenericValue.int(lint, arg2)
+   
+    print "llvmfunc: %s" % llvmfunc
+    print "a1: %s" % a1 
     retval = ee.run_function(llvmfunc, [a1, a2])
     print "retval is %s" % retval
     return retval
 
 def compile(afunc, arg1, arg2): # FIXME; should this take the module as an arg?
     lisp_module = llvm.core.Module.new("minilispmod")
-    ldouble = llvm.core.Type.double()
-    two_arg_func = llvm.core.Type.function(ldouble, [ldouble, ldouble])
+    lint = llvm.core.Type.int()
+    two_arg_func = llvm.core.Type.function(lint, [lint, lint])
     
     f = lisp_module.add_function(two_arg_func, afunc.__name__)
     #print dir(f.args[0])
-    f.args[0] = arg1
-    f.args[1] = arg2
+    f.args[0].name = 'a'
+    f.args[1].name = 'b'
 
     bb = f.append_basic_block("entry")
     builder = llvm.core.Builder.new(bb)
@@ -91,7 +115,7 @@ def repl():
     while True:
         try:
             line = raw_input("%s " % prompt)
-            print evaluate(parse(line))
+            print evaluate(parse(line), compiled_funcs = {})
         except ValueError as ve:
             print ve
             
