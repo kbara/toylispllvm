@@ -6,37 +6,44 @@ import llvm.ee
 
 prompt = ">"
 
-def strip_outer_parens(parts):
-    if parts[0] == '(':
-        parts = parts[1:]
-    else:
-        parts[0] = parts[0][1:]
-
-    if parts[-1] == ')':
-        parts = parts[:-1]
-    elif parts[-1][-1] == ')':
-        parts[-1] = parts[-1][:-1]
-    else:
-        raise ValueError("Mismatching parens: %s" % parts)
-    return parts
-
+Symbol = str
 
 def parse(x):
-    #print x
-    parts = x.split()
-    if not parts:
-        return '' # FIXME
-
-    if parts[0][0] != '(':
-        if len(parts) > 1:
-            raise ValueError("Parse error (too many parts) on %s" % x)
-        if parts[0] in '0123456789':
-            return int(parts[0])
-        else:
-            return parts[0]
+    tokens = (tokenize(x))
+    if tokens:
+        return read_from(tokens)
     else:
-        parts = strip_outer_parens(parts)
-        return (map(parse, parts))
+        return []
+
+def tokenize(x):
+    return x.replace('(', ' ( ').replace(')', ' ) ').split()
+
+def read_from(tokens):
+    print tokens
+    if len(tokens) == 0:
+        raise SyntaxError("Unexpected EOF (read_from)")
+    cur_token = tokens.pop(0)
+    if cur_token == '(':
+        out = []
+        while tokens[0] != ')':
+            out.append(read_from(tokens))
+        tokens.pop(0)
+        return out
+    elif cur_token == ')':
+        raise SyntaxError("Unexpected ')' (read_from)")
+    else:
+        print "cur_token is %s" % cur_token
+        return atom(cur_token)
+   
+def atom(token):
+    print "atomizing %s" % token
+    try:
+        return int(token)
+    except ValueError:
+        try:
+            return float(token)
+        except ValueError:
+            return Symbol(token) 
     
 def compile_and_execute(afunc, args):
     afn = afunc.__name__

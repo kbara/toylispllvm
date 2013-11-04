@@ -5,7 +5,7 @@ import minilisp
 
 class TestParse(unittest.TestCase):
     def testParseEmpty(self):
-        assert(minilisp.parse('') == '')
+        assert(minilisp.parse('') == [])
 
     def testParseNumber(self):
         assert(minilisp.parse("3") == 3)
