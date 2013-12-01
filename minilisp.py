@@ -68,7 +68,7 @@ def compile_and_execute(afunc, args):
 def applyit(afunc, args):
     return apply(afunc, args[:2]) # FIXME
 
-def evaluate(aparse, compiled_funcs=None):
+def old_evaluate(aparse, compiled_funcs=None):
     if not isinstance(aparse, [].__class__):
         return aparse
     else:
@@ -80,6 +80,45 @@ def evaluate(aparse, compiled_funcs=None):
         #executed = execute(comp_mod[0], comp_mod[1], aparse[1], aparse[2])
         print "executed is %s" % ret.as_int()
         return applyit(afunc, aparse[1:])
+
+def is_integer(atom):
+    try:
+        int(atom)
+        return True
+    except ValueError:
+        return False
+
+def is_atom(aparse):
+    return not isinstance(aparse, [].__class__) 
+
+current_bb_builder = None
+
+def codegen(aparse):
+    if is_atom(aparse):
+        if is_integer(aparse):
+            return llvm.core.Constant.int(llvm.core.Type.int(), aparse)
+        else:
+            raise ValueError("unhandled atom")
+    else: # everything else is currently a two-argument function
+        lint = llvm.core.Type.int()
+        #two_arg_func = llvm.core.Type.function(lint, [lint, lint])
+        a1 = codegen(aparse[1])
+        a2 = codegen(aparse[2])
+        tmp = getattr(current_bb_builder, operator.add.__name__)(a1, a2, "tmpwhy")
+        return tmp
+        
+def compile_line(aparse):
+    lisp_module = llvm.core.Module.new("minilisp")
+    lint = llvm.core.Type.int()
+    myfunc = llvm.core.Type.function(lint, [])
+    f = lisp_module.add_function(myfunc, "afunctionname")
+    bb = f.append_basic_block("entry")
+    global current_bb_builder
+    current_bb_builder = llvm.core.Builder.new(bb)
+    current_bb_builder.ret(codegen(aparse))
+    print "module: %s" % lisp_module
+    print "function: %s" % myfunc
+    return myfunc
 
 def execute(module, llvmfunc, arg1, arg2):
     ee = llvm.ee.ExecutionEngine.new(module)
@@ -93,7 +132,7 @@ def execute(module, llvmfunc, arg1, arg2):
     print "retval is %s" % retval
     return retval
 
-def compile(afunc, arg1, arg2): # FIXME; should this take the module as an arg?
+def old_compile(afunc, arg1, arg2): # FIXME; should this take the module as an arg?
     lisp_module = llvm.core.Module.new("minilispmod")
     lint = llvm.core.Type.int()
     two_arg_func = llvm.core.Type.function(lint, [lint, lint])
