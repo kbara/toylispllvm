@@ -68,18 +68,18 @@ def is_variable(aparse):
 def codegen(aparse, env, cbuilder, cfunction):
     if is_atom(aparse):
         if is_integer(aparse):
-            return (llvm.core.Constant.int(llvm.core.Type.int(), aparse), cbuilder)
+            return llvm.core.Constant.int(llvm.core.Type.int(), aparse)
         elif is_variable(aparse):
-            return (cbuilder.load(env[aparse]), cbuilder)
+            return cbuilder.load(env[aparse])
         else:
             raise ValueError("unhandled atom")
 
     elif aparse[0] == '=':
-        a1 = codegen(aparse[1], env, cbuilder, cfunction)[0]
-        a2 = codegen(aparse[2], env, cbuilder, cfunction)[0]
+        a1 = codegen(aparse[1], env, cbuilder, cfunction)
+        a2 = codegen(aparse[2], env, cbuilder, cfunction)
 
         cmpval = cbuilder.icmp(llvm.core.ICMP_EQ, a1, a2, 'cmptmp')
-        return (cmpval, cbuilder) 
+        return cmpval
     elif aparse[0] == 'let': # this is still int-only, and only one var...
         varname = aparse[1][0]
         env2 = copy.copy(env)
@@ -89,15 +89,36 @@ def codegen(aparse, env, cbuilder, cfunction):
         builder.position_at_beginning(entry)
         env2[varname] = builder.alloca(llvm.core.Type.int(), varname)
 
-        varval = codegen(aparse[1][1], env, cbuilder, cfunction)[0]
+        varval = codegen(aparse[1][1], env, cbuilder, cfunction)
         cbuilder.store(varval, env2[varname])
         return codegen(aparse[2], env2, cbuilder, cfunction)
+    # http://www.llvmpy.org/llvmpy-doc/0.9/doc/kaleidoscope/PythonLangImpl3.html
+    # heavily influenced the 'if' code.
     elif aparse[0] == 'if':
-        condition = codegen(aparse[1], env, cbuilder, cfunction)[0]
+        condition = codegen(aparse[1], env, cbuilder, cfunction)
         iftrue = aparse[2]
         iffalse = aparse[3]
-        #print cbuilder.cmp()
-        #bb_then = llvm.core.Builder.new(TODO)
+
+        then_block = cfunction.append_basic_block('then')
+        else_block = cfunction.append_basic_block('else')
+        merge_block = cfunction.append_basic_block('ifcond')
+        cbuilder.cbranch(condition, then_block, else_block)
+
+        cbuilder.position_at_end(then_block)
+        then_value = codegen(iftrue, env, cbuilder, cfunction)
+        cbuilder.branch(merge_block)
+
+        then_block = cbuilder.basic_block
+        cbuilder.position_at_end(else_block)
+        else_value = codegen(iffalse, env, cbuilder, cfunction)
+        cbuilder.branch(merge_block)
+        
+        else_block = cbuilder.basic_block
+        cbuilder.position_at_end(merge_block)
+        phi = cbuilder.phi(llvm.core.Type.int(), 'iftmp')
+        phi.add_incoming(then_value, then_block)
+        phi.add_incoming(else_value, else_block)
+        return phi
 
     #elif aparse[0] == 'lambda':
     #    args = aparse[1]
@@ -106,10 +127,10 @@ def codegen(aparse, env, cbuilder, cfunction):
     else: # everything else is currently a no-argument function
         lint = llvm.core.Type.int()
         op = lookup(aparse[0])
-        a1 = codegen(aparse[1], env, cbuilder, cfunction)[0]
-        a2 = codegen(aparse[2], env, cbuilder, cfunction)[0]
-        tmp = getattr(cbuilder, op.__name__)(a1, a2, "tmpwhy")
-        return (tmp, cbuilder)
+        a1 = codegen(aparse[1], env, cbuilder, cfunction)
+        a2 = codegen(aparse[2], env, cbuilder, cfunction)
+        tmp = getattr(cbuilder, op)(a1, a2, "tmpwhy")
+        return tmp
         
 
 def compile_line(aparse):
@@ -119,7 +140,7 @@ def compile_line(aparse):
     f = lisp_module.add_function(func_type, "afunction")
     bb = f.append_basic_block("entry")
     cbuilder = llvm.core.Builder.new(bb)
-    cbuilder.ret(codegen(aparse, {}, cbuilder, f)[0])
+    cbuilder.ret(codegen(aparse, {}, cbuilder, f))
     print "module: %s" % lisp_module
     print "function: %s" % f
     return lisp_module, f
@@ -134,7 +155,7 @@ def execute(module, llvmfunc):
 
 
 def lookup(afunc): # FIXME
-    funcs = {'+':operator.add, '*':operator.mul, '-':operator.sub}
+    funcs = {'+':'add', '*':'mul', '-':'sub'}
     if afunc in funcs:
         return funcs[afunc]
     else:
