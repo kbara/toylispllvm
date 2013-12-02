@@ -127,14 +127,17 @@ def lookup(afunc): # FIXME
         raise ValueError("Undefined function %s" % afunc)
 
 
+def run_code_to_int(string_code):
+    m, f = compile_line(parse(string_code))
+    return execute(m, f).as_int()
+
 def repl():
     while True:
-        #try:
+        try:
             line = raw_input("%s " % prompt)
-            m, f = compile_line(parse(line))
-            execute(m, f)
-        #except ValueError as ve:
-        #    print ve
+            run_code_to_int(line)
+        except ValueError as ve:
+            print ve
             
 
 if __name__ == '__main__':
