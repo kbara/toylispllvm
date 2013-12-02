@@ -60,6 +60,7 @@ def is_integer(atom):
 def is_atom(aparse):
     return not isinstance(aparse, [].__class__) 
 
+
 def is_variable(aparse):
     return True # FIXME
 
@@ -67,23 +68,36 @@ def is_variable(aparse):
 def codegen(aparse, env, cbuilder, cfunction):
     if is_atom(aparse):
         if is_integer(aparse):
-            return llvm.core.Constant.int(llvm.core.Type.int(), aparse)
+            return (llvm.core.Constant.int(llvm.core.Type.int(), aparse), cbuilder)
         elif is_variable(aparse):
-            return cbuilder.load(env[aparse])
+            return (cbuilder.load(env[aparse]), cbuilder)
         else:
             raise ValueError("unhandled atom")
+
+    elif aparse[0] == '=':
+        a1 = codegen(aparse[1], env, cbuilder, cfunction)[0]
+        a2 = codegen(aparse[2], env, cbuilder, cfunction)[0]
+
+        cmpval = cbuilder.icmp(llvm.core.ICMP_EQ, a1, a2, 'cmptmp')
+        return (cmpval, cbuilder) 
     elif aparse[0] == 'let': # this is still int-only, and only one var...
         varname = aparse[1][0]
-        env2 = copy.copy(env) 
+        env2 = copy.copy(env)
 
         entry = cfunction.get_entry_basic_block()
         builder = llvm.core.Builder.new(entry)
         builder.position_at_beginning(entry)
         env2[varname] = builder.alloca(llvm.core.Type.int(), varname)
 
-        varval = codegen(aparse[1][1], env, cbuilder, cfunction)
+        varval = codegen(aparse[1][1], env, cbuilder, cfunction)[0]
         cbuilder.store(varval, env2[varname])
         return codegen(aparse[2], env2, cbuilder, cfunction)
+    elif aparse[0] == 'if':
+        condition = codegen(aparse[1], env, cbuilder, cfunction)[0]
+        iftrue = aparse[2]
+        iffalse = aparse[3]
+        #print cbuilder.cmp()
+        #bb_then = llvm.core.Builder.new(TODO)
 
     #elif aparse[0] == 'lambda':
     #    args = aparse[1]
@@ -92,10 +106,10 @@ def codegen(aparse, env, cbuilder, cfunction):
     else: # everything else is currently a no-argument function
         lint = llvm.core.Type.int()
         op = lookup(aparse[0])
-        a1 = codegen(aparse[1], env, cbuilder, cfunction)
-        a2 = codegen(aparse[2], env, cbuilder, cfunction)
+        a1 = codegen(aparse[1], env, cbuilder, cfunction)[0]
+        a2 = codegen(aparse[2], env, cbuilder, cfunction)[0]
         tmp = getattr(cbuilder, op.__name__)(a1, a2, "tmpwhy")
-        return tmp
+        return (tmp, cbuilder)
         
 
 def compile_line(aparse):
@@ -105,7 +119,7 @@ def compile_line(aparse):
     f = lisp_module.add_function(func_type, "afunction")
     bb = f.append_basic_block("entry")
     cbuilder = llvm.core.Builder.new(bb)
-    cbuilder.ret(codegen(aparse, {}, cbuilder, f))
+    cbuilder.ret(codegen(aparse, {}, cbuilder, f)[0])
     print "module: %s" % lisp_module
     print "function: %s" % f
     return lisp_module, f
@@ -126,16 +140,18 @@ def lookup(afunc): # FIXME
     else:
         raise ValueError("Undefined function %s" % afunc)
 
-
 def run_code_to_int(string_code):
+    return run_code(string_code).as_int()
+
+def run_code(string_code):
     m, f = compile_line(parse(string_code))
-    return execute(m, f).as_int()
+    return execute(m, f)
 
 def repl():
     while True:
         try:
             line = raw_input("%s " % prompt)
-            run_code_to_int(line)
+            print run_code_to_int(line)
         except ValueError as ve:
             print ve
             
