@@ -119,7 +119,11 @@ def codegen(aparse, env, cbuilder, cfunction):
         phi.add_incoming(then_value, then_block)
         phi.add_incoming(else_value, else_block)
         return phi
-
+    elif aparse[0] == 'begin':
+        ret = None
+        for stmt in aparse[1:]:
+            ret = codegen(stmt, env, cbuilder, cfunction)
+        return ret
     #elif aparse[0] == 'lambda':
     #    args = aparse[1]
     #    body = aparse[2]
