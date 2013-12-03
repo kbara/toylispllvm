@@ -80,6 +80,11 @@ def codegen(aparse, env, cbuilder, cfunction):
 
         cmpval = cbuilder.icmp(llvm.core.ICMP_EQ, a1, a2, 'cmptmp')
         return cmpval
+    elif aparse[0] == '<':
+        a1 = codegen(aparse[1], env, cbuilder, cfunction)
+        a2 = codegen(aparse[2], env, cbuilder, cfunction)
+        cmpval = cbuilder.icmp(llvm.core.ICMP_SLT, a1, a2, 'cmptmp')
+        return cmpval
     elif aparse[0] == 'let': # this is still int-only, and only one var...
         varname = aparse[1][0]
         env2 = copy.copy(env)
