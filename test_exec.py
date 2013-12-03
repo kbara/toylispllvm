@@ -36,6 +36,14 @@ class TestLispFunctions(unittest.TestCase):
         code = '(begin (+ 3 4) (+ 7 8))'
         self.assertEqual(15, minilisp.run_code_to_int(code))
 
+    def testSet(self):
+        code = '(let (x 3) (let (y 4) (begin (set! x 5) x)))'
+        self.assertEqual(5, minilisp.run_code_to_int(code))
+
+    def testBeginAndSet(self):
+        code = '(begin (set! x 3) x)'
+        self.assertEqual(3, minilisp.run_code_to_int(code))
+
 if __name__ == '__main__':
     unittest.main()
 

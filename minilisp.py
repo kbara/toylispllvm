@@ -92,6 +92,12 @@ def codegen(aparse, env, cbuilder, cfunction):
         varval = codegen(aparse[1][1], env, cbuilder, cfunction)
         cbuilder.store(varval, env2[varname])
         return codegen(aparse[2], env2, cbuilder, cfunction)
+    elif aparse[0] == 'set!':
+        varname = aparse[1]
+        val = codegen(aparse[2], env, cbuilder, cfunction)
+        if not env.has_key(varname):
+            env[varname] = cbuilder.alloca(llvm.core.Type.int(), varname)
+        cbuilder.store(val, env[varname])
     # http://www.llvmpy.org/llvmpy-doc/0.9/doc/kaleidoscope/PythonLangImpl3.html
     # heavily influenced the 'if' code.
     elif aparse[0] == 'if':
