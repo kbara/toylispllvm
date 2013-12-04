@@ -86,16 +86,17 @@ def codegen(aparse, env, cbuilder, cfunction):
         cmpval = cbuilder.icmp(llvm.core.ICMP_SLT, a1, a2, 'cmptmp')
         return cmpval
     elif aparse[0] == 'let': # this is still int-only, and only one var...
-        varname = aparse[1][0]
         env2 = copy.copy(env)
+        varbindings = aparse[1]
+        for vb in varbindings:
+            varname = vb[0]
+            entry = cfunction.get_entry_basic_block()
+            builder = llvm.core.Builder.new(entry)
+            builder.position_at_beginning(entry)
+            env2[varname] = builder.alloca(llvm.core.Type.int(), varname)
 
-        entry = cfunction.get_entry_basic_block()
-        builder = llvm.core.Builder.new(entry)
-        builder.position_at_beginning(entry)
-        env2[varname] = builder.alloca(llvm.core.Type.int(), varname)
-
-        varval = codegen(aparse[1][1], env, cbuilder, cfunction)
-        cbuilder.store(varval, env2[varname])
+            varval = codegen(vb[1], env, cbuilder, cfunction)
+            cbuilder.store(varval, env2[varname])
         return codegen(aparse[2], env2, cbuilder, cfunction)
     elif aparse[0] == 'set!':
         varname = aparse[1]
@@ -130,6 +131,22 @@ def codegen(aparse, env, cbuilder, cfunction):
         phi.add_incoming(then_value, then_block)
         phi.add_incoming(else_value, else_block)
         return phi
+    elif aparse[0] == 'while': #unlispy exercise...
+        # Kaleidoscope-influenced while-code, via for loops
+        pre_header_block = cbuilder.basic_block
+        loop_block = cfunction.append_basic_block('loop')
+        
+        # Insert an explicit fallthrough from the current block to the loop_block.
+        cbuilder.branch(loop_block)
+        cbuilder.position_at_end(loop_block) # Start insertion in loop_block
+        body = codegen(aparse[2], env, cbuilder, cfunction)
+        condition = codegen(aparse[1], env, cbuilder, cfunction)
+        loop_end_block = cbuilder.basic_block
+        after_block = cfunction.append_basic_block('afterloop')
+
+        # Insert the conditional branch into the end of loop_end_block.
+        cbuilder.cbranch(condition, loop_block, after_block)
+        cbuilder.position_at_end(after_block)
     elif aparse[0] == 'begin':
         ret = None
         for stmt in aparse[1:]:

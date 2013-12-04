@@ -16,7 +16,7 @@ class TestLispFunctions(unittest.TestCase):
         self.assertEqual(7, minilisp.run_code_to_int('(+ 2 (- (* 5 2) 5))'))
 
     def testLet(self):
-        self.assertEqual(9, minilisp.run_code_to_int('(let (x 1) (+ x 8))'))
+        self.assertEqual(9, minilisp.run_code_to_int('(let ((x 1)) (+ x 8))'))
 
     def testEquality(self):
         ret1 = 1 & minilisp.run_code_to_int('(= 3 3)')
@@ -35,7 +35,7 @@ class TestLispFunctions(unittest.TestCase):
         self.assertEqual(3, minilisp.run_code_to_int('(if (= 1 1) 3 4)'))
         
     def testComplexIfLet(self):
-        code = '(if (= (let (x 1) x) (let (x 2) x)) (let (x 5) x) (let (x 6) x))'
+        code = '(if (= (let ((x 1)) x) (let ((x 2)) x)) (let ((x 5)) x) (let ((x 6)) x))'
         self.assertEqual(6, minilisp.run_code_to_int(code))
 
     def testBegin(self):
@@ -43,12 +43,20 @@ class TestLispFunctions(unittest.TestCase):
         self.assertEqual(15, minilisp.run_code_to_int(code))
 
     def testSet(self):
-        code = '(let (x 3) (let (y 4) (begin (set! x 5) x)))'
+        code = '(let ((x 3)) (let ((y 4)) (begin (set! x 5) x)))'
         self.assertEqual(5, minilisp.run_code_to_int(code))
 
     def testBeginAndSet(self):
         code = '(begin (set! x 3) x)'
         self.assertEqual(3, minilisp.run_code_to_int(code))
+
+    def testWhile(self):
+        code = '(let ((x 2)(y 11)) \
+            (begin \
+                (while (< 0 x) \
+                    (begin (set! x (- x 1)) (set! y (+ y 1)))) \
+            y))'
+        self.assertEqual(13, minilisp.run_code_to_int(code))
 
 if __name__ == '__main__':
     unittest.main()

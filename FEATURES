@@ -1,0 +1,6 @@
+Implemented: int-specific versions of if, let, =, <, +, -, *, set!, begin
+
+Notes:
+* No real error-checking
+* Behavior of (let ((x 1) (x 2)) undefined; 2 atm.
+
