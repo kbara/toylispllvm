@@ -58,6 +58,11 @@ class TestLispFunctions(unittest.TestCase):
             y))'
         self.assertEqual(13, minilisp.run_code_to_int(code))
 
+
+    def testWhileNoTimes(self):
+        code = ('(let ((x 3)) (begin (while (< 3 0) (set! x 5)) x))')
+        self.assertEqual(3, minilisp.run_code_to_int(code))
+
 if __name__ == '__main__':
     unittest.main()
 

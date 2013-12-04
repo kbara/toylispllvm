@@ -149,15 +149,17 @@ def codegen(aparse, env, cbuilder, cfunction):
         phi.add_incoming(else_value, else_block)
         return phi
     elif aparse[0] == 'while': #unlispy exercise...
-        # Kaleidoscope-influenced while-code, via for loops
-        loop_block = cfunction.append_basic_block('loop') 
-        # Insert an explicit fallthrough from the current block to the loop_block.
-        cbuilder.branch(loop_block)
-        cbuilder.position_at_end(loop_block) # Start insertion in loop_block
-        body = codegen(aparse[2], env, cbuilder, cfunction)
+        condition_block = cfunction.append_basic_block('loop_header')
+        loop_block = cfunction.append_basic_block('loop_body')
+        after_block = cfunction.append_basic_block('after_loop')
+        # Insert an explicit fallthrough from the current block to the condition_block.
+        cbuilder.branch(condition_block)
+        cbuilder.position_at_end(condition_block)
         condition = codegen(aparse[1], env, cbuilder, cfunction)
-        after_block = cfunction.append_basic_block('afterloop')
         cbuilder.cbranch(condition, loop_block, after_block)
+        cbuilder.position_at_end(loop_block)
+        body = codegen(aparse[2], env, cbuilder, cfunction)
+        cbuilder.branch(condition_block)
         cbuilder.position_at_end(after_block)
     elif aparse[0] == 'begin':
         ret = None
