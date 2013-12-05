@@ -16,8 +16,8 @@
 #along with this program; if not, write to the Free Software
 #Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-import operator
 import copy
+import sys
 
 import llvm
 import llvm.core
@@ -228,7 +228,8 @@ def repl():
             print run_code_to_int(line)
         except ValueError as ve:
             print ve
-            
+        except EOFError:
+            sys.exit(0) # Done        
 
 if __name__ == '__main__':
     repl()
