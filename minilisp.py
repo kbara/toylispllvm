@@ -194,8 +194,8 @@ def compile_line(aparse):
     cbuilder = llvm.core.Builder.new(bb)
     (codeval, codetype) = codegen(aparse, {}, cbuilder, f)
     cbuilder.ret(codeval)
-    print "module: %s" % lisp_module
-    print "function: %s" % f
+    print >> sys.stderr, "module: %s" % lisp_module
+    print >> sys.stderr, "function: %s" % f
     return lisp_module, f
 
 
@@ -203,7 +203,7 @@ def execute(module, llvmfunc):
     ee = llvm.ee.ExecutionEngine.new(module)
     lint = llvm.core.Type.int()
     retval = ee.run_function(llvmfunc, [])
-    print "retval is %s" % retval.as_int()
+    print >> sys.stderr, "retval is %s" % retval.as_int()
     return retval
 
 
@@ -224,7 +224,8 @@ def run_code(string_code):
 def repl():
     while True:
         try:
-            line = raw_input("%s " % prompt)
+            print >> sys.stderr, "%s " % prompt,
+            line = raw_input()
             print run_code_to_int(line)
         except ValueError as ve:
             print ve
