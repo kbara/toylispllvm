@@ -26,6 +26,9 @@ import llvm.ee
 prompt = ">"
 
 Symbol = str
+TYPE_NONE = 0
+TYPE_INT = 1
+TYPE_BOX = 2
 
 # The parser/tokenizer/read_from are stolen from Norvig's lis.py
 def parse(x):
@@ -85,23 +88,23 @@ def is_variable(aparse):
 def codegen(aparse, env, cbuilder, cfunction):
     if is_atom(aparse):
         if is_integer(aparse):
-            return llvm.core.Constant.int(llvm.core.Type.int(), aparse)
+            return (llvm.core.Constant.int(llvm.core.Type.int(), aparse), TYPE_INT)
         elif is_variable(aparse):
-            return cbuilder.load(env[aparse])
+            return (cbuilder.load(env[aparse]), TYPE_INT) # FIXME_t
         else:
             raise ValueError("unhandled atom")
 
     elif aparse[0] == '=':
-        a1 = codegen(aparse[1], env, cbuilder, cfunction)
-        a2 = codegen(aparse[2], env, cbuilder, cfunction)
+        (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
+        (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
 
         cmpval = cbuilder.icmp(llvm.core.ICMP_EQ, a1, a2, 'cmptmp')
-        return cmpval
+        return (cmpval, TYPE_INT)
     elif aparse[0] == '<':
-        a1 = codegen(aparse[1], env, cbuilder, cfunction)
-        a2 = codegen(aparse[2], env, cbuilder, cfunction)
+        (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
+        (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
         cmpval = cbuilder.icmp(llvm.core.ICMP_SLT, a1, a2, 'cmptmp')
-        return cmpval
+        return (cmpval, TYPE_INT)
     elif aparse[0] == 'let': # this is still int-only, and only one var...
         env2 = copy.copy(env)
         varbindings = aparse[1]
@@ -112,19 +115,20 @@ def codegen(aparse, env, cbuilder, cfunction):
             builder.position_at_beginning(entry)
             env2[varname] = builder.alloca(llvm.core.Type.int(), varname)
 
-            varval = codegen(vb[1], env, cbuilder, cfunction)
+            (varval, vvtype) = codegen(vb[1], env, cbuilder, cfunction)
             cbuilder.store(varval, env2[varname])
         return codegen(aparse[2], env2, cbuilder, cfunction)
     elif aparse[0] == 'set!':
         varname = aparse[1]
-        val = codegen(aparse[2], env, cbuilder, cfunction)
+        (val, valtype) = codegen(aparse[2], env, cbuilder, cfunction)
         if not env.has_key(varname):
             env[varname] = cbuilder.alloca(llvm.core.Type.int(), varname)
         cbuilder.store(val, env[varname])
+        return (None, TYPE_NONE)
     # http://www.llvmpy.org/llvmpy-doc/0.9/doc/kaleidoscope/PythonLangImpl3.html
     # heavily influenced the 'if' code.
     elif aparse[0] == 'if':
-        condition = codegen(aparse[1], env, cbuilder, cfunction)
+        (condition, cvtype) = codegen(aparse[1], env, cbuilder, cfunction)
         iftrue = aparse[2]
         iffalse = aparse[3]
 
@@ -134,12 +138,12 @@ def codegen(aparse, env, cbuilder, cfunction):
         cbuilder.cbranch(condition, then_block, else_block)
 
         cbuilder.position_at_end(then_block)
-        then_value = codegen(iftrue, env, cbuilder, cfunction)
+        (then_value, tvtype) = codegen(iftrue, env, cbuilder, cfunction)
         cbuilder.branch(merge_block)
 
         then_block = cbuilder.basic_block
         cbuilder.position_at_end(else_block)
-        else_value = codegen(iffalse, env, cbuilder, cfunction)
+        (else_value, evtype) = codegen(iffalse, env, cbuilder, cfunction)
         cbuilder.branch(merge_block)
         
         else_block = cbuilder.basic_block
@@ -147,7 +151,7 @@ def codegen(aparse, env, cbuilder, cfunction):
         phi = cbuilder.phi(llvm.core.Type.int(), 'iftmp')
         phi.add_incoming(then_value, then_block)
         phi.add_incoming(else_value, else_block)
-        return phi
+        return (phi, TYPE_INT) # FIXME_t
     elif aparse[0] == 'while': #unlispy exercise...
         condition_block = cfunction.append_basic_block('loop_header')
         loop_block = cfunction.append_basic_block('loop_body')
@@ -155,17 +159,19 @@ def codegen(aparse, env, cbuilder, cfunction):
         # Insert an explicit fallthrough from the current block to the condition_block.
         cbuilder.branch(condition_block)
         cbuilder.position_at_end(condition_block)
-        condition = codegen(aparse[1], env, cbuilder, cfunction)
+        (condition, cvtype) = codegen(aparse[1], env, cbuilder, cfunction)
         cbuilder.cbranch(condition, loop_block, after_block)
         cbuilder.position_at_end(loop_block)
-        body = codegen(aparse[2], env, cbuilder, cfunction)
+        (body, bvtype) = codegen(aparse[2], env, cbuilder, cfunction)
         cbuilder.branch(condition_block)
         cbuilder.position_at_end(after_block)
+        return (None, TYPE_NONE)
     elif aparse[0] == 'begin':
         ret = None
+        rvtype = None
         for stmt in aparse[1:]:
-            ret = codegen(stmt, env, cbuilder, cfunction)
-        return ret
+            (ret, revtype) = codegen(stmt, env, cbuilder, cfunction)
+        return (ret, rvtype)
     #elif aparse[0] == 'lambda':
     #    args = aparse[1]
     #    body = aparse[2]
@@ -173,10 +179,10 @@ def codegen(aparse, env, cbuilder, cfunction):
     else: # everything else is currently a no-argument function
         lint = llvm.core.Type.int()
         op = lookup(aparse[0])
-        a1 = codegen(aparse[1], env, cbuilder, cfunction)
-        a2 = codegen(aparse[2], env, cbuilder, cfunction)
+        (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
+        (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
         tmp = getattr(cbuilder, op)(a1, a2, "tmpwhy")
-        return tmp
+        return (tmp, TYPE_INT) # FIXME_t
         
 
 def compile_line(aparse):
@@ -186,7 +192,8 @@ def compile_line(aparse):
     f = lisp_module.add_function(func_type, "afunction")
     bb = f.append_basic_block("entry")
     cbuilder = llvm.core.Builder.new(bb)
-    cbuilder.ret(codegen(aparse, {}, cbuilder, f))
+    (codeval, codetype) = codegen(aparse, {}, cbuilder, f)
+    cbuilder.ret(codeval)
     print "module: %s" % lisp_module
     print "function: %s" % f
     return lisp_module, f
