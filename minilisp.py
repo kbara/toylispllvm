@@ -203,7 +203,7 @@ def execute(module, llvmfunc):
 
 def lookup_icmp(cmp_op):
     lc = llvm.core
-    cmp_ops = {'<':lc.ICMP_SLT, '=':lc.ICMP_EQ, '>':lc.ICMP_SGE,
+    cmp_ops = {'<':lc.ICMP_SLT, '=':lc.ICMP_EQ, '>':lc.ICMP_SGT,
         '!=':lc.ICMP_NE, '<=':lc.ICMP_SLE, '>=':lc.ICMP_SGE}
     if cmp_ops.has_key(cmp_op):
         return cmp_ops[cmp_op]

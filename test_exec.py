@@ -43,8 +43,10 @@ class TestLispFunctions(unittest.TestCase):
         self.assertEqual(0, ret5)
         ret6 = 1 & minilisp.run_code_to_int('(> 3 5)')
         self.assertEqual(0, ret6)
-        ret7 = 1 & minilisp.run_code_to_int('(>= 3 3)')
-        self.assertEqual(1, ret7)
+        ret7 = 1 & minilisp.run_code_to_int('(> 3 3)')
+        self.assertEqual(0, ret7)
+        ret8 = 1 & minilisp.run_code_to_int('(>= 3 3)')
+        self.assertEqual(1, ret8)
 
     def testIf(self):
         self.assertEqual(4, minilisp.run_code_to_int('(if (= 1 2) 3 4)'))
