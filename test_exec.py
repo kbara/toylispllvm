@@ -81,6 +81,10 @@ class TestLispFunctions(unittest.TestCase):
         code = ('(let ((x 3)) (begin (while (< 3 0) (set! x 5)) x))')
         self.assertEqual(3, minilisp.run_code_to_int(code))
 
+    def testBoxing(self):
+        self.assertEqual(0, minilisp.run_code_to_int('(begin (box 3) 0)'))
+        self.assertEqual(3, minilisp.run_code_to_int('(unbox (box 3))'))
+
 if __name__ == '__main__':
     unittest.main()
 

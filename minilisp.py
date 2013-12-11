@@ -84,6 +84,26 @@ def is_atom(aparse):
 def is_variable(aparse):
     return True # FIXME
 
+def codegen_boxed(aparse, env, cbuilder, cfunction):
+    # [Type, Value, Refcount]
+    BOX_COMPONENTS = 3
+    if aparse[0] == 'box':
+        lint = llvm.core.Type.int()
+        llvm_box_size = llvm.core.Constant.int(lint, BOX_COMPONENTS)
+        llvm_type_val = llvm.core.Constant.int(lint, TYPE_INT) # FIXME
+        llvm_ref_count = llvm.core.Constant.int(lint, 0)
+ 
+        val = codegen(aparse[1], env, cbuilder, cfunction)[0]
+        mem = cbuilder.malloc_array(lint, llvm_box_size)
+        cbuilder.store(val, mem)
+        return (mem, TYPE_BOX)
+
+    elif aparse[0] == 'unbox':
+        arg = codegen(aparse[1], env, cbuilder, cfunction)
+        val = cbuilder.load(arg[0])
+        cbuilder.free(arg[0])
+        return (val, TYPE_INT) # FIXME_t
+
 
 def codegen(aparse, env, cbuilder, cfunction):
     if is_atom(aparse):
@@ -100,6 +120,9 @@ def codegen(aparse, env, cbuilder, cfunction):
         (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
         cmpval = cbuilder.icmp(icmp_cmp, a1, a2, 'cmptmp')
         return (cmpval, TYPE_INT)
+    # [Type, Value, Refcount]
+    elif aparse[0] == 'box' or aparse[0] == 'unbox':
+        return codegen_boxed(aparse, env, cbuilder, cfunction)
     elif aparse[0] == 'let': # this is still int-only...
         env2 = copy.copy(env)
         varbindings = aparse[1]
