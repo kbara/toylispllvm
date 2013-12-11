@@ -30,6 +30,22 @@ class TestLispFunctions(unittest.TestCase):
         ret2 = 1 & minilisp.run_code_to_int('(< 2 3)')
         self.assertEqual(1, ret2)
 
+    def testOtherCmp(self): 
+        ret1 = 1 & minilisp.run_code_to_int('(<= 3 3)')
+        self.assertEqual(1, ret1)
+        ret2 = 1 & minilisp.run_code_to_int('(<= 3 4)')
+        self.assertEqual(1, ret2)
+        ret3 = 1 & minilisp.run_code_to_int('(<= 3 2)')
+        self.assertEqual(0, ret3)
+        ret4 = 1 & minilisp.run_code_to_int('(!= 2 3)')
+        self.assertEqual(1, ret4)
+        ret5 = 1 & minilisp.run_code_to_int('(!= 5 5)')
+        self.assertEqual(0, ret5)
+        ret6 = 1 & minilisp.run_code_to_int('(> 3 5)')
+        self.assertEqual(0, ret6)
+        ret7 = 1 & minilisp.run_code_to_int('(>= 3 3)')
+        self.assertEqual(1, ret7)
+
     def testIf(self):
         self.assertEqual(4, minilisp.run_code_to_int('(if (= 1 2) 3 4)'))
         self.assertEqual(3, minilisp.run_code_to_int('(if (= 1 1) 3 4)'))

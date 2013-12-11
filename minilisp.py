@@ -94,18 +94,13 @@ def codegen(aparse, env, cbuilder, cfunction):
         else:
             raise ValueError("unhandled atom")
 
-    elif aparse[0] == '=':
+    elif lookup_icmp(aparse[0]): # It's an integer comparison
+        icmp_cmp = lookup_icmp(aparse[0])
         (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
         (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
-
-        cmpval = cbuilder.icmp(llvm.core.ICMP_EQ, a1, a2, 'cmptmp')
+        cmpval = cbuilder.icmp(icmp_cmp, a1, a2, 'cmptmp')
         return (cmpval, TYPE_INT)
-    elif aparse[0] == '<':
-        (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
-        (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
-        cmpval = cbuilder.icmp(llvm.core.ICMP_SLT, a1, a2, 'cmptmp')
-        return (cmpval, TYPE_INT)
-    elif aparse[0] == 'let': # this is still int-only, and only one var...
+    elif aparse[0] == 'let': # this is still int-only...
         env2 = copy.copy(env)
         varbindings = aparse[1]
         for vb in varbindings:
@@ -206,6 +201,13 @@ def execute(module, llvmfunc):
     print >> sys.stderr, "retval is %s" % retval.as_int()
     return retval
 
+def lookup_icmp(cmp_op):
+    lc = llvm.core
+    cmp_ops = {'<':lc.ICMP_SLT, '=':lc.ICMP_EQ, '>':lc.ICMP_SGE,
+        '!=':lc.ICMP_NE, '<=':lc.ICMP_SLE, '>=':lc.ICMP_SGE}
+    if cmp_ops.has_key(cmp_op):
+        return cmp_ops[cmp_op]
+    return None
 
 def lookup(afunc): # FIXME
     funcs = {'+':'add', '*':'mul', '-':'sub'}
