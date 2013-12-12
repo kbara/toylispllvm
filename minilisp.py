@@ -109,26 +109,32 @@ def decrease_refcount(box_p, cbuilder, cfunction):
     
     cbuilder.position_at_end(after_block) # necessary
 
+def box_val(vtype, val, cbuilder):
+    BOX_COMPONENTS = 3
+    lint = llvm.core.Type.int()
+
+    llvm_box_size = llvm.core.Constant.int(lint, BOX_COMPONENTS)
+    llvm_ref_count = llvm.core.Constant.int(lint, 1)
+    llvm_type_val = llvm.core.Constant.int(lint, vtype)
+ 
+    mem = cbuilder.malloc_array(lint, llvm_box_size)
+    mem_tp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 0)])
+    cbuilder.store(llvm_type_val, mem_tp)
+    mem_valp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 1)])
+    cbuilder.store(val, mem_valp)
+    mem_refp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 2)])
+    cbuilder.store(llvm_ref_count, mem_refp)
+
+    return (mem, TYPE_BOX)
+
 
 def codegen_boxed(aparse, env, cbuilder, cfunction):
     # [Type, Value, Refcount]
     BOX_COMPONENTS = 3
     lint = llvm.core.Type.int()
     if aparse[0] == 'box':
-        llvm_box_size = llvm.core.Constant.int(lint, BOX_COMPONENTS)
-        llvm_type_val = llvm.core.Constant.int(lint, TYPE_INT) # FIXME
-        llvm_ref_count = llvm.core.Constant.int(lint, 1)
- 
         val = codegen(aparse[1], env, cbuilder, cfunction)[0]
-        mem = cbuilder.malloc_array(lint, llvm_box_size)
-        mem_tp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 0)])
-        cbuilder.store(llvm_type_val, mem_tp)
-        mem_valp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 1)])
-        cbuilder.store(val, mem_valp)
-        mem_refp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 2)])
-        cbuilder.store(llvm_ref_count, mem_refp)
-
-        return (mem, TYPE_BOX)
+        return box_val(TYPE_INT, val, cbuilder)
 
     elif aparse[0] == 'unbox':
         # This -could- assert that the type is TYPE_BOX...
