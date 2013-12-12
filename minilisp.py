@@ -149,6 +149,9 @@ def codegen_boxed(aparse, env, cbuilder, cfunction):
 
 
 def codegen(aparse, env, cbuilder, cfunction):
+    lint = llvm.core.Type.int()
+    if aparse in ["'()", "()", "nil", "'nil"]:
+        return box_val(TYPE_NONE, llvm.core.Constant.int(lint, 0), cbuilder)
     if is_atom(aparse):
         if is_integer(aparse):
             return (llvm.core.Constant.int(llvm.core.Type.int(), aparse), TYPE_INT)
@@ -238,7 +241,6 @@ def codegen(aparse, env, cbuilder, cfunction):
     #    body = aparse[2]
     #    pass
     else: # everything else is currently a no-argument function
-        lint = llvm.core.Type.int()
         op = lookup(aparse[0])
         (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
         (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
