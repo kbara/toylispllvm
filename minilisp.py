@@ -84,6 +84,32 @@ def is_atom(aparse):
 def is_variable(aparse):
     return True # FIXME
 
+
+def decrease_refcount(box_p, cbuilder, cfunction):
+    lint = llvm.core.Type.int()
+    mem_refp = cbuilder.gep(box_p, [llvm.core.Constant.int(lint, 2)])
+    refc = cbuilder.load(mem_refp)
+    new_refc = cbuilder.sub(refc, llvm.core.Constant.int(lint, 1))
+    cbuilder.store(new_refc, mem_refp)
+
+    condition_block = cfunction.append_basic_block('check_freeable')
+    free_block = cfunction.append_basic_block('free')
+    after_block = cfunction.append_basic_block('after')
+
+    cbuilder.branch(condition_block)
+    cbuilder.position_at_end(condition_block)
+    is_freeable = cbuilder.icmp(llvm.core.ICMP_EQ, new_refc,
+        llvm.core.Constant.int(lint, 0), 'refcmp')
+    cbuilder.cbranch(is_freeable, free_block, after_block)
+
+    # The reference count is zero
+    cbuilder.position_at_end(free_block)
+    cbuilder.free(box_p)
+    cbuilder.branch(after_block)
+    
+    cbuilder.position_at_end(after_block) # necessary
+
+
 def codegen_boxed(aparse, env, cbuilder, cfunction):
     # [Type, Value, Refcount]
     BOX_COMPONENTS = 3
@@ -112,12 +138,7 @@ def codegen_boxed(aparse, env, cbuilder, cfunction):
         content_type = cbuilder.load(mem_tp)
         mem_valp = cbuilder.gep(box_p, [llvm.core.Constant.int(lint, 1)])
         val = cbuilder.load(mem_valp)
-        mem_refp = cbuilder.gep(box_p, [llvm.core.Constant.int(lint, 2)])
-        refc = cbuilder.load(mem_refp)
-        new_refc = cbuilder.sub(refc, llvm.core.Constant.int(lint, 1))
-        cbuilder.store(new_refc, mem_refp)
-
-        cbuilder.free(box_p) # FIXME: make this conditional
+        decrease_refcount(box_p, cbuilder, cfunction)
         return (val, content_type)
 
 
