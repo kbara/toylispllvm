@@ -87,22 +87,38 @@ def is_variable(aparse):
 def codegen_boxed(aparse, env, cbuilder, cfunction):
     # [Type, Value, Refcount]
     BOX_COMPONENTS = 3
+    lint = llvm.core.Type.int()
     if aparse[0] == 'box':
-        lint = llvm.core.Type.int()
         llvm_box_size = llvm.core.Constant.int(lint, BOX_COMPONENTS)
         llvm_type_val = llvm.core.Constant.int(lint, TYPE_INT) # FIXME
-        llvm_ref_count = llvm.core.Constant.int(lint, 0)
+        llvm_ref_count = llvm.core.Constant.int(lint, 1)
  
         val = codegen(aparse[1], env, cbuilder, cfunction)[0]
         mem = cbuilder.malloc_array(lint, llvm_box_size)
-        cbuilder.store(val, mem)
+        mem_tp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 0)])
+        cbuilder.store(llvm_type_val, mem_tp)
+        mem_valp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 1)])
+        cbuilder.store(val, mem_valp)
+        mem_refp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 2)])
+        cbuilder.store(llvm_ref_count, mem_refp)
+
         return (mem, TYPE_BOX)
 
     elif aparse[0] == 'unbox':
-        arg = codegen(aparse[1], env, cbuilder, cfunction)
-        val = cbuilder.load(arg[0])
-        cbuilder.free(arg[0])
-        return (val, TYPE_INT) # FIXME_t
+        # This -could- assert that the type is TYPE_BOX...
+        box_p = codegen(aparse[1], env, cbuilder, cfunction)[0]
+
+        mem_tp = cbuilder.gep(box_p, [llvm.core.Constant.int(lint, 0)])
+        content_type = cbuilder.load(mem_tp)
+        mem_valp = cbuilder.gep(box_p, [llvm.core.Constant.int(lint, 1)])
+        val = cbuilder.load(mem_valp)
+        mem_refp = cbuilder.gep(box_p, [llvm.core.Constant.int(lint, 2)])
+        refc = cbuilder.load(mem_refp)
+        new_refc = cbuilder.sub(refc, llvm.core.Constant.int(lint, 1))
+        cbuilder.store(new_refc, mem_refp)
+
+        cbuilder.free(box_p) # FIXME: make this conditional
+        return (val, content_type)
 
 
 def codegen(aparse, env, cbuilder, cfunction):
