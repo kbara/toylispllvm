@@ -132,6 +132,7 @@ def box_val(val, vtype, cbuilder):
 
 # Value and point_to need to already be valid LLVM objects
 def cons_val(val, vtype, point_to, cbuilder):
+    # [Vtype, Value, Pointer, Refcount]
     CONS_COMPONENTS = 4
     lint = llvm.core.Type.int()
 
@@ -190,13 +191,21 @@ def codegen(aparse, env, cbuilder, cfunction):
         (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
         cmpval = cbuilder.icmp(icmp_cmp, a1, a2, 'cmptmp')
         return (cmpval, TYPE_INT)
-    # [Type, Value, Refcount]
     elif aparse[0] == 'box' or aparse[0] == 'unbox':
         return codegen_boxed(aparse, env, cbuilder, cfunction)
     elif aparse[0] == 'cons':
         val = codegen(aparse[1], env, cbuilder, cfunction)
         onto = codegen(aparse[2], env, cbuilder, cfunction)
         return cons_val(val[0], val[1], onto[0], cbuilder)
+    elif aparse[0] == 'head':
+        cons_p = codegen(aparse[1], env, cbuilder, cfunction)[0]
+
+        mem_tp = cbuilder.gep(cons_p, [llvm.core.Constant.int(lint, 0)])
+        content_type = cbuilder.load(mem_tp)
+        mem_valp = cbuilder.gep(cons_p, [llvm.core.Constant.int(lint, 1)])
+        val = cbuilder.load(mem_valp)
+
+        return (val, content_type)
     elif aparse[0] == 'let': # this is still int-only...
         env2 = copy.copy(env)
         varbindings = aparse[1]
