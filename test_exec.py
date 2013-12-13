@@ -88,6 +88,13 @@ class TestLispFunctions(unittest.TestCase):
     def testNil(self):
         minilisp.run_code('nil')
 
+    def testCons(self):
+        minilisp.run_code('(cons 3 nil)')
+
+    def _testHead(self):
+        self.assertEqual(5, minilisp.run_code_to_int('(unbox (head (cons 5 nil)))'))
+
+
 if __name__ == '__main__':
     unittest.main()
 

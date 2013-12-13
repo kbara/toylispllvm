@@ -29,6 +29,7 @@ Symbol = str
 TYPE_NONE = 0
 TYPE_INT = 1
 TYPE_BOX = 2
+TYPE_CONS = 3
 
 # The parser/tokenizer/read_from are stolen from Norvig's lis.py
 def parse(x):
@@ -82,7 +83,7 @@ def is_atom(aparse):
 
 
 def is_variable(aparse):
-    return True # FIXME
+    return True # FIXME    
 
 
 def decrease_refcount(box_p, cbuilder, cfunction):
@@ -109,7 +110,8 @@ def decrease_refcount(box_p, cbuilder, cfunction):
     
     cbuilder.position_at_end(after_block) # necessary
 
-def box_val(vtype, val, cbuilder):
+
+def box_val(val, vtype, cbuilder):
     BOX_COMPONENTS = 3
     lint = llvm.core.Type.int()
 
@@ -128,13 +130,35 @@ def box_val(vtype, val, cbuilder):
     return (mem, TYPE_BOX)
 
 
+# Value and point_to need to already be valid LLVM objects
+def cons_val(val, vtype, point_to, cbuilder):
+    CONS_COMPONENTS = 4
+    lint = llvm.core.Type.int()
+
+    llvm_cons_size = llvm.core.Constant.int(lint, CONS_COMPONENTS)
+    llvm_ref_count = llvm.core.Constant.int(lint, 1)
+    llvm_type_val = llvm.core.Constant.int(lint, vtype)
+
+    mem = cbuilder.malloc_array(lint, llvm_cons_size)
+    mem_tp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 0)])
+    cbuilder.store(llvm_type_val, mem_tp)
+    mem_valp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 1)])
+    cbuilder.store(val, mem_valp)
+    mem_ptrp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 2)])
+    cbuilder.store(point_to, mem_ptrp)
+    mem_refp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 3)])
+    cbuilder.store(llvm_ref_count, mem_refp)
+
+    return (mem, TYPE_CONS)
+
+
 def codegen_boxed(aparse, env, cbuilder, cfunction):
     # [Type, Value, Refcount]
     BOX_COMPONENTS = 3
     lint = llvm.core.Type.int()
     if aparse[0] == 'box':
-        val = codegen(aparse[1], env, cbuilder, cfunction)[0]
-        return box_val(TYPE_INT, val, cbuilder)
+        val = codegen(aparse[1], env, cbuilder, cfunction)
+        return box_val(val[0], val[1], cbuilder)
 
     elif aparse[0] == 'unbox':
         # This -could- assert that the type is TYPE_BOX...
@@ -151,7 +175,7 @@ def codegen_boxed(aparse, env, cbuilder, cfunction):
 def codegen(aparse, env, cbuilder, cfunction):
     lint = llvm.core.Type.int()
     if aparse in ["'()", "()", "nil", "'nil"]:
-        return box_val(TYPE_NONE, llvm.core.Constant.int(lint, 0), cbuilder)
+        return box_val(llvm.core.Constant.int(lint, 0), TYPE_NONE, cbuilder)
     if is_atom(aparse):
         if is_integer(aparse):
             return (llvm.core.Constant.int(llvm.core.Type.int(), aparse), TYPE_INT)
@@ -169,6 +193,10 @@ def codegen(aparse, env, cbuilder, cfunction):
     # [Type, Value, Refcount]
     elif aparse[0] == 'box' or aparse[0] == 'unbox':
         return codegen_boxed(aparse, env, cbuilder, cfunction)
+    elif aparse[0] == 'cons':
+        val = codegen(aparse[1], env, cbuilder, cfunction)
+        onto = codegen(aparse[2], env, cbuilder, cfunction)
+        return cons_val(val[0], val[1], onto[0], cbuilder)
     elif aparse[0] == 'let': # this is still int-only...
         env2 = copy.copy(env)
         varbindings = aparse[1]
