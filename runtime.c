@@ -16,9 +16,32 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include <stdint.h>
 
-int32_t add_boxed(int32_t *box1, int32_t *box2) {
-	return box1[1] + box2[1];
+#include <stdint.h>
+#include <unistd.h>
+
+struct box {
+	intptr_t val;
+	int type;
+};
+
+int32_t add_boxed(struct box *box1, struct box *box2) {
+	return box1->val + box2->val;
+}
+
+struct box* box_val(intptr_t val, int type) {
+	struct box *bmem = malloc(sizeof(struct box));
+	if (!bmem) {
+		exit(1);
+	}
+	bmem->val = val;
+	bmem->type = type;
+
+	return bmem;
+}
+
+/* Convenience, for dealing with LLVM */
+struct box* box_ptr(void *val, int type) {
+	return box_val(val, type);
 }
 
