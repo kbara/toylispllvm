@@ -88,55 +88,10 @@ def is_variable(aparse):
     return True # FIXME    
 
 
-#def decrease_refcount(box_p, cbuilder, cfunction):
-#    lint = llvm.core.Type.int()
-#    mem_refp = cbuilder.gep(box_p, [llvm.core.Constant.int(lint, 2)])
-#    refc = cbuilder.load(mem_refp)
-#    new_refc = cbuilder.sub(refc, llvm.core.Constant.int(lint, 1))
-#    cbuilder.store(new_refc, mem_refp)
-
-#    condition_block = cfunction.append_basic_block('check_freeable')
-#    free_block = cfunction.append_basic_block('free')
-#    after_block = cfunction.append_basic_block('after')
-
-#    cbuilder.branch(condition_block)
-#    cbuilder.position_at_end(condition_block)
-#    is_freeable = cbuilder.icmp(llvm.core.ICMP_EQ, new_refc,
-#        llvm.core.Constant.int(lint, 0), 'refcmp')
-#    cbuilder.cbranch(is_freeable, free_block, after_block)
-
-#    # The reference count is zero
-#    cbuilder.position_at_end(free_block)
-#    cbuilder.free(box_p)
-#    cbuilder.branch(after_block)
-    
-#    cbuilder.position_at_end(after_block) # necessary
-
-
-#def box_val(val, vtype, cbuilder):
-#    BOX_COMPONENTS = 3
-#    lint = llvm.core.Type.int()
-
-#    llvm_box_size = llvm.core.Constant.int(lint, BOX_COMPONENTS)
-#    llvm_ref_count = llvm.core.Constant.int(lint, 1)
-#    llvm_type_val = llvm.core.Constant.int(lint, vtype)
- 
-#    mem = cbuilder.malloc_array(lint, llvm_box_size)
-#    mem_tp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 0)])
-#    cbuilder.store(llvm_type_val, mem_tp)
-#    mem_valp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 1)])
-#    cbuilder.store(val, mem_valp)
-#    mem_refp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 2)])
-#    cbuilder.store(llvm_ref_count, mem_refp)
-
-#    return (mem, TYPE_BOX)
-
-
 # Value and point_to need to already be valid LLVM objects
 def cons_val(val, vtype, point_to, cbuilder):
     # [Vtype, Value, Pointer, Refcount]
     CONS_COMPONENTS = 4
-    lint = llvm.core.Type.int()
 
     llvm_cons_size = llvm.core.Constant.int(lint, CONS_COMPONENTS)
     llvm_ref_count = llvm.core.Constant.int(lint, 1)
@@ -162,22 +117,9 @@ def box_val(val, vtype, cbuilder):
 
 
 def codegen_boxed(aparse, env, cbuilder, cfunction):
-    # [Type, Value, Refcount]
-    #BOX_COMPONENTS = 3
-    lint = llvm.core.Type.int()
     if aparse[0] == 'box':
         val, vtype = codegen(aparse[1], env, cbuilder, cfunction)
         return box_val(val, vtype, cbuilder)
-#    elif aparse[0] == 'unbox':
-#        # This -could- assert that the type is TYPE_BOX...
-#        box_p = codegen(aparse[1], env, cbuilder, cfunction)[0]
-#
-#        mem_tp = cbuilder.gep(box_p, [llvm.core.Constant.int(lint, 0)])
-#        content_type = cbuilder.load(mem_tp)
-#        mem_valp = cbuilder.gep(box_p, [llvm.core.Constant.int(lint, 1)])
-#        val = cbuilder.load(mem_valp)
-#        decrease_refcount(box_p, cbuilder, cfunction)
-#        return (val, content_type)
 
     elif aparse[0] == 'add_boxed': # another semi-unlispy exercise
         if len(aparse) != 3:
@@ -190,7 +132,6 @@ def codegen_boxed(aparse, env, cbuilder, cfunction):
     
 
 def codegen(aparse, env, cbuilder, cfunction):
-    lint = llvm.core.Type.int()
     if aparse in ["'()", "()", "nil", "'nil"]:
         return box_val(llvm.core.Constant.int(lint, 0), TYPE_NONE, cbuilder)
     if is_atom(aparse):
@@ -207,7 +148,7 @@ def codegen(aparse, env, cbuilder, cfunction):
         (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
         cmpval = cbuilder.icmp(icmp_cmp, a1, a2, 'cmptmp')
         return (cmpval, TYPE_INT)
-    elif aparse[0] in ['box', 'unbox', 'add_boxed', 'exit']:
+    elif aparse[0] in ['box', 'add_boxed']:
         return codegen_boxed(aparse, env, cbuilder, cfunction)
     elif aparse[0] == 'cons':
         val = codegen(aparse[1], env, cbuilder, cfunction)
@@ -305,7 +246,6 @@ def compile_line(aparse):
     global lisp_module
     llvm.core.load_library_permanently("/home/me/hs/lisp/lisp_runtime.so.0.0.1")
     lisp_module = llvm.core.Module.new("minilisp")
-    lint = llvm.core.Type.int()
     add_runtime_functions(lisp_module)
     func_type = llvm.core.Type.function(lint, [])
     f = lisp_module.add_function(func_type, "afunction")
@@ -320,14 +260,12 @@ def compile_line(aparse):
 
 def execute(module, llvmfunc):
     ee = llvm.ee.ExecutionEngine.new(module)
-    lint = llvm.core.Type.int()
     retval = ee.run_function(llvmfunc, [])
     print >> sys.stderr, "retval is %s" % retval.as_int()
     return retval
 
 
 def add_runtime_functions(module):
-    lint = llvm.core.Type.int()
     lap = llvm.core.Type.pointer(lint) # Lies; I'm using it like void*
     lisp_module.add_function(llvm.core.Type.function(lint, [lap, lap]), "add_boxed")
     lisp_module.add_function(llvm.core.Type.function(lap, [lint, lint]), "box_val")
