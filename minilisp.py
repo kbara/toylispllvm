@@ -172,6 +172,15 @@ def codegen_boxed(aparse, env, cbuilder, cfunction):
         decrease_refcount(box_p, cbuilder, cfunction)
         return (val, content_type)
 
+    elif aparse[0] == 'add_boxed': # another semi-unlispy exercise
+        if len(aparse) != 3:
+            raise RuntimeError("Wrong number of arguments to add_boxed")
+        v1 = codegen_boxed(aparse[1], env, cbuilder, cfunction)[0]
+        v2 = codegen_boxed(aparse[2], env, cbuilder, cfunction)[0]
+        
+        callee = lisp_module.get_function_named('add_boxed')
+        return (cbuilder.call(callee, [v1, v2], 'add_boxed'), TYPE_INT)
+    
 
 def codegen(aparse, env, cbuilder, cfunction):
     lint = llvm.core.Type.int()
@@ -191,7 +200,7 @@ def codegen(aparse, env, cbuilder, cfunction):
         (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
         cmpval = cbuilder.icmp(icmp_cmp, a1, a2, 'cmptmp')
         return (cmpval, TYPE_INT)
-    elif aparse[0] == 'box' or aparse[0] == 'unbox':
+    elif aparse[0] in ['box', 'unbox', 'add_boxed', 'exit']:
         return codegen_boxed(aparse, env, cbuilder, cfunction)
     elif aparse[0] == 'cons':
         val = codegen(aparse[1], env, cbuilder, cfunction)
@@ -286,8 +295,11 @@ def codegen(aparse, env, cbuilder, cfunction):
         
 
 def compile_line(aparse):
+    global lisp_module
+    llvm.core.load_library_permanently("/home/me/hs/lisp/lisp_runtime.so.0.0.1")
     lisp_module = llvm.core.Module.new("minilisp")
     lint = llvm.core.Type.int()
+    add_runtime_functions(lisp_module)
     func_type = llvm.core.Type.function(lint, [])
     f = lisp_module.add_function(func_type, "afunction")
     bb = f.append_basic_block("entry")
@@ -306,6 +318,13 @@ def execute(module, llvmfunc):
     print >> sys.stderr, "retval is %s" % retval.as_int()
     return retval
 
+
+def add_runtime_functions(module):
+    lint = llvm.core.Type.int()
+    lap = llvm.core.Type.pointer(lint) # Actually, it's a pointer to an array...
+    lisp_module.add_function(llvm.core.Type.function(lint, [lap, lap]), "add_boxed")
+
+
 def lookup_icmp(cmp_op):
     lc = llvm.core
     cmp_ops = {'<':lc.ICMP_SLT, '=':lc.ICMP_EQ, '>':lc.ICMP_SGT,
@@ -313,6 +332,7 @@ def lookup_icmp(cmp_op):
     if cmp_ops.has_key(cmp_op):
         return cmp_ops[cmp_op]
     return None
+
 
 def lookup(afunc): # FIXME
     funcs = {'+':'add', '*':'mul', '-':'sub'}

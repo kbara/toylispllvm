@@ -94,7 +94,9 @@ class TestLispFunctions(unittest.TestCase):
     def testHead(self):
         self.assertEqual(5, minilisp.run_code_to_int('(head (cons 5 nil))'))
 
-
+    def testAddBoxed(self):
+        self.assertEqual(25, minilisp.run_code_to_int('(add_boxed (box 10) (box 15))'))
+    
 if __name__ == '__main__':
     unittest.main()
 
