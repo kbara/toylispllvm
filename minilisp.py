@@ -30,6 +30,7 @@ TYPE_NONE = 0
 TYPE_INT = 1
 TYPE_BOX = 2
 TYPE_CONS = 3
+TYPE_NIL = 4
 
 lint = llvm.core.Type.int()
 
@@ -133,7 +134,7 @@ def codegen_boxed(aparse, env, cbuilder, cfunction):
 
 def codegen(aparse, env, cbuilder, cfunction):
     if aparse in ["'()", "()", "nil", "'nil"]:
-        return box_val(llvm.core.Constant.int(lint, 0), TYPE_NONE, cbuilder)
+        return (llvm.core.Constant.null(llvm.core.Type.pointer(lint)), TYPE_NIL)
     if is_atom(aparse):
         if is_integer(aparse):
             return (llvm.core.Constant.int(llvm.core.Type.int(), aparse), TYPE_INT)
