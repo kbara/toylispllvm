@@ -91,29 +91,7 @@ def is_variable(aparse):
     return True # FIXME    
 
 
-# Value and point_to need to already be valid LLVM objects
-#def cons_val(val, vtype, point_to, cbuilder):
-    # [Vtype, Value, Pointer, Refcount]
-#    CONS_COMPONENTS = 4
-
-#    llvm_cons_size = llvm.core.Constant.int(lint, CONS_COMPONENTS)
-#    llvm_ref_count = llvm.core.Constant.int(lint, 1)
-#    llvm_type_val = llvm.core.Constant.int(lint, vtype)
-
-#    mem = cbuilder.malloc_array(lint, llvm_cons_size)
-#    mem_tp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 0)])
-#    cbuilder.store(llvm_type_val, mem_tp)
-#    mem_valp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 1)])
-#    cbuilder.store(val, mem_valp)
-#    mem_ptrp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 2)])
-#    cbuilder.store(point_to, mem_ptrp)
-#    mem_refp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 3)])
-#    cbuilder.store(llvm_ref_count, mem_refp)
-
-#    return (mem, TYPE_CONS)
-
 def gifb(abox, cbuilder):
-    print "abox is %s" % abox
     g = lisp_module.get_function_named("get_int_from_box")
     return (cbuilder.call(g, [abox]), TYPE_INT)
 
@@ -124,7 +102,6 @@ def cons_val(val, point_to, cbuilder):
 
 
 def box_val(val, vtype, cbuilder):
-    print "val is %s" % val
     assert vtype != TYPE_BOX # Don't box boxes
     bv = lisp_module.get_function_named("box_val")
     vt = llvm.core.Constant.int(lint, vtype)
@@ -144,7 +121,6 @@ def codegen_boxed(aparse, env, cbuilder, cfunction):
 
     elif aparse[0] == 'gifb':
         gboxed, gtype = codegen(aparse[1], env, cbuilder, cfunction)
-        print "gtype is %s" % gtype
         assert gtype == TYPE_BOX
         return gifb(gboxed, cbuilder)
     elif aparse[0] == 'add_boxed': # another semi-unlispy exercise
@@ -180,15 +156,7 @@ def codegen(aparse, env, cbuilder, cfunction):
     elif aparse[0] == 'head':
         thelist, ltype = codegen(aparse[1], env, cbuilder, cfunction)
         return head_list(thelist, cbuilder)
-    #    cons_p = codegen(aparse[1], env, cbuilder, cfunction)[0]
-
-    #    mem_tp = cbuilder.gep(cons_p, [llvm.core.Constant.int(lint, 0)])
-    #    content_type = cbuilder.load(mem_tp)
-    #    mem_valp = cbuilder.gep(cons_p, [llvm.core.Constant.int(lint, 1)])
-    #    val = cbuilder.load(mem_valp)
-
-    #    return (val, content_type)
-    elif aparse[0] == 'let': # this is still int-only...
+    elif aparse[0] == 'let':
         env2 = copy.copy(env)
         varbindings = aparse[1]
         for vb in varbindings:
@@ -196,7 +164,6 @@ def codegen(aparse, env, cbuilder, cfunction):
             entry = cfunction.get_entry_basic_block()
             builder = llvm.core.Builder.new(entry)
             builder.position_at_beginning(entry)
-            #env2[varname] = builder.alloca(llvm.core.Type.int(), varname)
             env2[varname] = builder.alloca(fvp, varname)
             (varval, vvtype) = codegen(vb[1], env, cbuilder, cfunction)
             cbuilder.store(varval, env2[varname])
@@ -205,7 +172,6 @@ def codegen(aparse, env, cbuilder, cfunction):
         varname = aparse[1]
         (val, valtype) = codegen(aparse[2], env, cbuilder, cfunction)
         if not env.has_key(varname):
-            #env[varname] = cbuilder.alloca(llvm.core.Type.int(), varname)
             env[varname] = cbuilder.alloca(fvp, varname)
         cbuilder.store(val, env[varname])
         return (None, TYPE_NONE)
@@ -275,8 +241,6 @@ def codegen(aparse, env, cbuilder, cfunction):
         a1 = norm_to_int(a1, v1type, cbuilder)
         a2 = norm_to_int(a2, v2type, cbuilder)
         mathres = getattr(cbuilder, op)(a1, a2, "intmathop")
-        print "mathres type is %s" % mathres.type
-        #return (tmp, TYPE_INT)
         return box_val(mathres, TYPE_INT, cbuilder)
 
         
