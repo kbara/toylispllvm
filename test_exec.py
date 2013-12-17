@@ -104,6 +104,12 @@ class TestLispFunctions(unittest.TestCase):
         #self.assertEqual(25, run_code_to_int('(add_boxed (box 10) (box 15))'))
         self.assertEqual(25, run_unboxed_code_to_int('(add_boxed 10 15)'))        
 
+    def testLetCons(self):
+        self.assertEqual(33, run_code_to_int('(let ((y (cons 33 nil))) (head y))'))
+
+    def testConsCons(self):
+        self.assertEqual(3, run_code_to_int('(let ((x (cons 3 nil)) (y (cons 4 nil))) (head (head (cons x y))))'))
+
 if __name__ == '__main__':
     unittest.main()
 

@@ -75,7 +75,6 @@ struct box* box_ptr(void *val, int type) {
 }
 
 struct cons* cons(struct box *val, struct cons *next) {
-	assert(val->data_type == BOX_TYPE);
 	struct cons *cmem = malloc(sizeof(struct cons));
 	if (!cmem) {
 		exit(1);

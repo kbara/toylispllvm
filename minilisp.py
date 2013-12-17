@@ -151,7 +151,8 @@ def codegen(aparse, env, cbuilder, cfunction):
         val = codegen(aparse[1], env, cbuilder, cfunction)
         assert val[1] == TYPE_BOX
         onto = codegen(aparse[2], env, cbuilder, cfunction)
-        assert onto[1] == TYPE_CONS or onto[1] == TYPE_NIL
+        # TODO/FIXME: afaik, TYPE_BOX isn't actually for cons, but dotted pairs...
+        assert onto[1] == TYPE_CONS or onto[1] == TYPE_NIL or onto[1] == TYPE_BOX
         return cons_val(val[0], onto[0], cbuilder)
     elif aparse[0] == 'head':
         thelist, ltype = codegen(aparse[1], env, cbuilder, cfunction)
