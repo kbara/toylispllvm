@@ -113,6 +113,11 @@ def head_list(alist, cbuilder):
     return (cbuilder.call(head, [alist]), TYPE_BOX) # FIXME_t
 
 
+def tail_list(alist, cbuilder):
+    tail = lisp_module.get_function_named("tail")
+    return (cbuilder.call(tail, [alist]), TYPE_CONS)
+
+
 def codegen_boxed(aparse, env, cbuilder, cfunction):
     if aparse[0] == 'box':
         val, vtype = codegen(aparse[1], env, cbuilder, cfunction)
@@ -157,6 +162,9 @@ def codegen(aparse, env, cbuilder, cfunction):
     elif aparse[0] == 'head':
         thelist, ltype = codegen(aparse[1], env, cbuilder, cfunction)
         return head_list(thelist, cbuilder)
+    elif aparse[0] == 'tail':
+        thelist, ltype = codegen(aparse[1], env, cbuilder, cfunction)
+        return tail_list(thelist, cbuilder)
     elif aparse[0] == 'let':
         env2 = copy.copy(env)
         varbindings = aparse[1]
@@ -285,6 +293,7 @@ def add_runtime_functions(module):
     lisp_module.add_function(llvm.core.Type.function(fvp, [fvp, fvp]), "cons")
     lisp_module.add_function(llvm.core.Type.function(lint, [fvp]), "get_int_from_box")
     lisp_module.add_function(llvm.core.Type.function(fvp, [fvp]), "head")
+    lisp_module.add_function(llvm.core.Type.function(fvp, [fvp]), "tail")
 
 
 def lookup_icmp(cmp_op):

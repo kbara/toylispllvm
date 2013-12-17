@@ -34,8 +34,8 @@ struct box {
 
 struct cons {
 	int data_type;
-	struct box *val;
-	struct cons *next;
+	void *car;
+	void *cdr;
 };
 
 /* TODO: check that boxN->type is int */
@@ -80,16 +80,22 @@ struct cons* cons(struct box *val, struct cons *next) {
 		exit(1);
 	}
 	cmem->data_type = CONS_TYPE;
-	cmem->val = val;
-	cmem->next = next;
+	cmem->car = val;
+	cmem->cdr = next;
 
 	return cmem;
 }
 
-struct box* head(struct cons* alist){
+void* head(struct cons* alist) {
 	assert(alist != NULL);
 	assert(alist->data_type == CONS_TYPE);
-	return alist->val;
+	return alist->car;
+}
+
+void* tail(struct cons* alist) {
+	assert(alist != NULL);
+	assert(alist->data_type == CONS_TYPE);
+	return alist->cdr;
 }
 
 /* Convenience, for testing; arguably, it should check it's TYPE_INT */

@@ -110,6 +110,10 @@ class TestLispFunctions(unittest.TestCase):
     def testConsCons(self):
         self.assertEqual(3, run_code_to_int('(let ((x (cons 3 nil)) (y (cons 4 nil))) (head (head (cons x y))))'))
 
+    def testTail(self):
+        self.assertEqual(4, run_code_to_int('(head (tail (cons 3 (cons 4 nil))))'))
+
+
 if __name__ == '__main__':
     unittest.main()
 
