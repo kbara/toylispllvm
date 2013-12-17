@@ -31,8 +31,10 @@ TYPE_INT = 1
 TYPE_BOX = 2
 TYPE_CONS = 3
 TYPE_NIL = 4
+TYPE_CMP = 5
 
 lint = llvm.core.Type.int()
+fvp = llvm.core.Type.pointer(lint) # "Fake void*"
 
 # The parser/tokenizer/read_from are stolen from Norvig's lis.py
 def parse(x):
@@ -90,43 +92,66 @@ def is_variable(aparse):
 
 
 # Value and point_to need to already be valid LLVM objects
-def cons_val(val, vtype, point_to, cbuilder):
+#def cons_val(val, vtype, point_to, cbuilder):
     # [Vtype, Value, Pointer, Refcount]
-    CONS_COMPONENTS = 4
+#    CONS_COMPONENTS = 4
 
-    llvm_cons_size = llvm.core.Constant.int(lint, CONS_COMPONENTS)
-    llvm_ref_count = llvm.core.Constant.int(lint, 1)
-    llvm_type_val = llvm.core.Constant.int(lint, vtype)
+#    llvm_cons_size = llvm.core.Constant.int(lint, CONS_COMPONENTS)
+#    llvm_ref_count = llvm.core.Constant.int(lint, 1)
+#    llvm_type_val = llvm.core.Constant.int(lint, vtype)
 
-    mem = cbuilder.malloc_array(lint, llvm_cons_size)
-    mem_tp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 0)])
-    cbuilder.store(llvm_type_val, mem_tp)
-    mem_valp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 1)])
-    cbuilder.store(val, mem_valp)
-    mem_ptrp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 2)])
-    cbuilder.store(point_to, mem_ptrp)
-    mem_refp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 3)])
-    cbuilder.store(llvm_ref_count, mem_refp)
+#    mem = cbuilder.malloc_array(lint, llvm_cons_size)
+#    mem_tp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 0)])
+#    cbuilder.store(llvm_type_val, mem_tp)
+#    mem_valp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 1)])
+#    cbuilder.store(val, mem_valp)
+#    mem_ptrp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 2)])
+#    cbuilder.store(point_to, mem_ptrp)
+#    mem_refp = cbuilder.gep(mem, [llvm.core.Constant.int(lint, 3)])
+#    cbuilder.store(llvm_ref_count, mem_refp)
 
-    return (mem, TYPE_CONS)
+#    return (mem, TYPE_CONS)
+
+def gifb(abox, cbuilder):
+    print "abox is %s" % abox
+    g = lisp_module.get_function_named("get_int_from_box")
+    return (cbuilder.call(g, [abox]), TYPE_INT)
+
+
+def cons_val(val, point_to, cbuilder):
+    cv = lisp_module.get_function_named("cons")
+    return (cbuilder.call(cv, [val, point_to]), TYPE_CONS)
 
 
 def box_val(val, vtype, cbuilder):
-    box_val = lisp_module.get_function_named("box_val")
+    print "val is %s" % val
+    assert vtype != TYPE_BOX # Don't box boxes
+    bv = lisp_module.get_function_named("box_val")
     vt = llvm.core.Constant.int(lint, vtype)
-    return (cbuilder.call(box_val, [val, vt]), TYPE_BOX)
+    return (cbuilder.call(bv, [val, vt]), TYPE_BOX)
+
+
+def head_list(alist, cbuilder):
+    head = lisp_module.get_function_named("head")
+    return (cbuilder.call(head, [alist]), TYPE_BOX) # FIXME_t
 
 
 def codegen_boxed(aparse, env, cbuilder, cfunction):
     if aparse[0] == 'box':
         val, vtype = codegen(aparse[1], env, cbuilder, cfunction)
+        assert vtype != TYPE_BOX # don't box boxes
         return box_val(val, vtype, cbuilder)
 
+    elif aparse[0] == 'gifb':
+        gboxed, gtype = codegen(aparse[1], env, cbuilder, cfunction)
+        print "gtype is %s" % gtype
+        assert gtype == TYPE_BOX
+        return gifb(gboxed, cbuilder)
     elif aparse[0] == 'add_boxed': # another semi-unlispy exercise
         if len(aparse) != 3:
             raise RuntimeError("Wrong number of arguments to add_boxed")
-        v1 = codegen_boxed(aparse[1], env, cbuilder, cfunction)[0]
-        v2 = codegen_boxed(aparse[2], env, cbuilder, cfunction)[0]
+        v1 = codegen(aparse[1], env, cbuilder, cfunction)[0]
+        v2 = codegen(aparse[2], env, cbuilder, cfunction)[0]
         
         callee = lisp_module.get_function_named('add_boxed')
         return (cbuilder.call(callee, [v1, v2], 'add_boxed'), TYPE_INT)
@@ -137,33 +162,32 @@ def codegen(aparse, env, cbuilder, cfunction):
         return (llvm.core.Constant.null(llvm.core.Type.pointer(lint)), TYPE_NIL)
     if is_atom(aparse):
         if is_integer(aparse):
-            return (llvm.core.Constant.int(llvm.core.Type.int(), aparse), TYPE_INT)
+            #return (llvm.core.Constant.int(llvm.core.Type.int(), aparse), TYPE_INT)
+            return box_val(llvm.core.Constant.int(lint, aparse), TYPE_INT, cbuilder)
         elif is_variable(aparse):
-            return (cbuilder.load(env[aparse]), TYPE_INT) # FIXME_t
+            return (cbuilder.load(env[aparse]), TYPE_BOX) # FIXME_t
         else:
             raise ValueError("unhandled atom")
 
-    elif lookup_icmp(aparse[0]): # It's an integer comparison
-        icmp_cmp = lookup_icmp(aparse[0])
-        (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
-        (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
-        cmpval = cbuilder.icmp(icmp_cmp, a1, a2, 'cmptmp')
-        return (cmpval, TYPE_INT)
-    elif aparse[0] in ['box', 'add_boxed']:
+    elif aparse[0] in ['box', 'add_boxed', 'gifb']:
         return codegen_boxed(aparse, env, cbuilder, cfunction)
     elif aparse[0] == 'cons':
         val = codegen(aparse[1], env, cbuilder, cfunction)
+        assert val[1] == TYPE_BOX
         onto = codegen(aparse[2], env, cbuilder, cfunction)
-        return cons_val(val[0], val[1], onto[0], cbuilder)
+        assert onto[1] == TYPE_CONS or onto[1] == TYPE_NIL
+        return cons_val(val[0], onto[0], cbuilder)
     elif aparse[0] == 'head':
-        cons_p = codegen(aparse[1], env, cbuilder, cfunction)[0]
+        thelist, ltype = codegen(aparse[1], env, cbuilder, cfunction)
+        return head_list(thelist, cbuilder)
+    #    cons_p = codegen(aparse[1], env, cbuilder, cfunction)[0]
 
-        mem_tp = cbuilder.gep(cons_p, [llvm.core.Constant.int(lint, 0)])
-        content_type = cbuilder.load(mem_tp)
-        mem_valp = cbuilder.gep(cons_p, [llvm.core.Constant.int(lint, 1)])
-        val = cbuilder.load(mem_valp)
+    #    mem_tp = cbuilder.gep(cons_p, [llvm.core.Constant.int(lint, 0)])
+    #    content_type = cbuilder.load(mem_tp)
+    #    mem_valp = cbuilder.gep(cons_p, [llvm.core.Constant.int(lint, 1)])
+    #    val = cbuilder.load(mem_valp)
 
-        return (val, content_type)
+    #    return (val, content_type)
     elif aparse[0] == 'let': # this is still int-only...
         env2 = copy.copy(env)
         varbindings = aparse[1]
@@ -172,8 +196,8 @@ def codegen(aparse, env, cbuilder, cfunction):
             entry = cfunction.get_entry_basic_block()
             builder = llvm.core.Builder.new(entry)
             builder.position_at_beginning(entry)
-            env2[varname] = builder.alloca(llvm.core.Type.int(), varname)
-
+            #env2[varname] = builder.alloca(llvm.core.Type.int(), varname)
+            env2[varname] = builder.alloca(fvp, varname)
             (varval, vvtype) = codegen(vb[1], env, cbuilder, cfunction)
             cbuilder.store(varval, env2[varname])
         return codegen(aparse[2], env2, cbuilder, cfunction)
@@ -181,7 +205,8 @@ def codegen(aparse, env, cbuilder, cfunction):
         varname = aparse[1]
         (val, valtype) = codegen(aparse[2], env, cbuilder, cfunction)
         if not env.has_key(varname):
-            env[varname] = cbuilder.alloca(llvm.core.Type.int(), varname)
+            #env[varname] = cbuilder.alloca(llvm.core.Type.int(), varname)
+            env[varname] = cbuilder.alloca(fvp, varname)
         cbuilder.store(val, env[varname])
         return (None, TYPE_NONE)
     # http://www.llvmpy.org/llvmpy-doc/0.9/doc/kaleidoscope/PythonLangImpl3.html
@@ -207,10 +232,10 @@ def codegen(aparse, env, cbuilder, cfunction):
         
         else_block = cbuilder.basic_block
         cbuilder.position_at_end(merge_block)
-        phi = cbuilder.phi(llvm.core.Type.int(), 'iftmp')
+        phi = cbuilder.phi(fvp, 'iftmp')
         phi.add_incoming(then_value, then_block)
         phi.add_incoming(else_value, else_block)
-        return (phi, TYPE_INT) # FIXME_t
+        return (phi, tvtype) # FIXME_t; this assumes tvtype == evtype
     elif aparse[0] == 'while': #unlispy exercise...
         condition_block = cfunction.append_basic_block('loop_header')
         loop_block = cfunction.append_basic_block('loop_body')
@@ -229,19 +254,42 @@ def codegen(aparse, env, cbuilder, cfunction):
         ret = None
         rvtype = None
         for stmt in aparse[1:]:
-            (ret, revtype) = codegen(stmt, env, cbuilder, cfunction)
+            (ret, rvtype) = codegen(stmt, env, cbuilder, cfunction)
         return (ret, rvtype)
     #elif aparse[0] == 'lambda':
     #    args = aparse[1]
     #    body = aparse[2]
     #    pass
+    elif lookup_icmp(aparse[0]): # It's an integer comparison
+        icmp_cmp = lookup_icmp(aparse[0])
+        (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
+        (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
+        a1 = norm_to_int(a1, v1type, cbuilder)
+        a2 = norm_to_int(a2, v2type, cbuilder)
+        cmpval = cbuilder.icmp(icmp_cmp, a1, a2, 'cmptmp')
+        return (cmpval, TYPE_CMP)
     else: # everything else is currently a no-argument function
         op = lookup(aparse[0])
         (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
         (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
-        tmp = getattr(cbuilder, op)(a1, a2, "tmpwhy")
-        return (tmp, TYPE_INT) # FIXME_t
+        a1 = norm_to_int(a1, v1type, cbuilder)
+        a2 = norm_to_int(a2, v2type, cbuilder)
+        mathres = getattr(cbuilder, op)(a1, a2, "intmathop")
+        print "mathres type is %s" % mathres.type
+        #return (tmp, TYPE_INT)
+        return box_val(mathres, TYPE_INT, cbuilder)
+
         
+# Temporary transition function
+def norm_to_int(val, vtype, cbuilder):
+    normed = val
+    if vtype == TYPE_BOX:
+        normed, newt = gifb(val, cbuilder)
+        assert newt == TYPE_INT
+    else:
+        assert vtype == TYPE_INT
+    return normed
+
 
 def compile_line(aparse):
     global lisp_module
@@ -267,9 +315,12 @@ def execute(module, llvmfunc):
 
 
 def add_runtime_functions(module):
-    lap = llvm.core.Type.pointer(lint) # Lies; I'm using it like void*
-    lisp_module.add_function(llvm.core.Type.function(lint, [lap, lap]), "add_boxed")
-    lisp_module.add_function(llvm.core.Type.function(lap, [lint, lint]), "box_val")
+    lisp_module.add_function(llvm.core.Type.function(lint, [fvp, fvp]), "add_boxed")
+    lisp_module.add_function(llvm.core.Type.function(fvp, [lint, lint]), "box_val")
+    lisp_module.add_function(llvm.core.Type.function(fvp, [fvp, fvp]), "cons")
+    lisp_module.add_function(llvm.core.Type.function(lint, [fvp]), "get_int_from_box")
+    lisp_module.add_function(llvm.core.Type.function(fvp, [fvp]), "head")
+
 
 def lookup_icmp(cmp_op):
     lc = llvm.core
@@ -287,12 +338,15 @@ def lookup(afunc): # FIXME
     else:
         raise ValueError("Undefined function %s" % afunc)
 
+
 def run_code_to_int(string_code):
     return run_code(string_code).as_int()
+
 
 def run_code(string_code):
     m, f = compile_line(parse(string_code))
     return execute(m, f)
+
 
 def repl():
     while True:
@@ -304,6 +358,7 @@ def repl():
             print ve
         except EOFError:
             sys.exit(0) # Done        
+
 
 if __name__ == '__main__':
     repl()
