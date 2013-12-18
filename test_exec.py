@@ -116,6 +116,9 @@ class TestLispFunctions(unittest.TestCase):
     #def testLambda(self):
     #    self.assertEqual(5, run_code_to_int('(let ((tfunc (lambda (x y) (+ x y)))) (tfunc 2 3))'))
 
+    def testDefineVar(self):
+        self.assertEqual(3, run_code_to_int('(begin (define a 3) a)'))
+
     def testDefineFunc(self):
         self.assertEqual(7, run_code_to_int('(begin (define (atestf y z) (+ y z)) (atestf 3 4))'))
 

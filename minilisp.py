@@ -119,15 +119,14 @@ def tail_list(alist, cbuilder):
     return (cbuilder.call(tail, [alist]), TYPE_CONS)
 
 
-def set_variable(vname, vval, env, cbuilder, cfunction):
+def cg_set_variable(vname, vval, env, cbuilder, cfunction):
     entry = cfunction.get_entry_basic_block()
     builder = llvm.core.Builder.new(entry)
     builder.position_at_beginning(entry)
     env[vname] = builder.alloca(fvp, vname)
     print "env[%s] = %s" % (vname, env[vname])
-    #(varval, vvtype) = codegen(vb[1], env, cbuilder, cfunction)
-    return (cbuilder.store(vval, env[vname]), TYPE_BOX) # TODO: CHECKME
-    #    return codegen(aparse[2], env2, cbuilder, cfunction)
+    # Setting a variable doesn't return a usable value in Scheme
+    return (cbuilder.store(vval, env[vname]), TYPE_NONE)
 
 
 def codegen_boxed(aparse, env, cbuilder, cfunction):
@@ -181,13 +180,8 @@ def codegen(aparse, env, cbuilder, cfunction):
         varbindings = aparse[1]
         for vb in varbindings:
             varname = vb[0]
-            #entry = cfunction.get_entry_basic_block()
-            #builder = llvm.core.Builder.new(entry)
-            #builder.position_at_beginning(entry)
-            #env2[varname] = builder.alloca(fvp, varname)
             (varval, vvtype) = codegen(vb[1], env, cbuilder, cfunction)
-            #cbuilder.store(varval, env2[varname])
-            set_variable(varname, varval, env2, cbuilder, cfunction)
+            cg_set_variable(varname, varval, env2, cbuilder, cfunction)
         return codegen(aparse[2], env2, cbuilder, cfunction)
     elif aparse[0] == 'set!':
         varname = aparse[1]
@@ -244,8 +238,10 @@ def codegen(aparse, env, cbuilder, cfunction):
             (ret, rvtype) = codegen(stmt, env, cbuilder, cfunction)
         return (ret, rvtype)
     elif aparse[0] == 'define':
-        if is_atom(aparse[1]):
-            raise ValueError("Not implemented - todo")
+        if is_atom(aparse[1]): # It's a variable definition
+            varval, vtype = codegen(aparse[2], env, cbuilder, cfunction)
+            return cg_set_variable(aparse[1], varval, env, cbuilder, cfunction)
+        # Otherwise, it's a function definition
         fname = aparse[1][0]
         args = aparse[1][1:]
         body = aparse[2]
