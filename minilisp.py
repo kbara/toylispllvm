@@ -143,7 +143,6 @@ def codegen(aparse, env, cbuilder, cfunction):
         return (llvm.core.Constant.null(llvm.core.Type.pointer(lint)), TYPE_NIL)
     if is_atom(aparse):
         if is_integer(aparse):
-            #return (llvm.core.Constant.int(llvm.core.Type.int(), aparse), TYPE_INT)
             return box_val(llvm.core.Constant.int(lint, aparse), TYPE_INT, cbuilder)
         elif is_variable(aparse):
             return (cbuilder.load(env[aparse]), TYPE_BOX) # FIXME_t
