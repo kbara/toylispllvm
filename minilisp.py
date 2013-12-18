@@ -124,7 +124,6 @@ def cg_set_variable(vname, vval, env, cbuilder, cfunction):
     builder = llvm.core.Builder.new(entry)
     builder.position_at_beginning(entry)
     env[vname] = builder.alloca(fvp, vname)
-    print "env[%s] = %s" % (vname, env[vname])
     # Setting a variable doesn't return a usable value in Scheme
     return (cbuilder.store(vval, env[vname]), TYPE_NONE)
 
@@ -245,19 +244,20 @@ def codegen(aparse, env, cbuilder, cfunction):
         fname = aparse[1][0]
         args = aparse[1][1:]
         body = aparse[2]
-
+        
         funcvars = []
         for a in args:
             funcvars.append(fvp)
         func_type = llvm.core.Type.function(fvp, funcvars)
         new_func = lisp_module.add_function(func_type, fname)
-        for i in range(len(args)):
-            new_func.args[i].name = args[i]
-            print new_func.args[i]
+        f_env = copy.copy(env)
         bb = new_func.append_basic_block("entry")
         func_builder = llvm.core.Builder.new(bb)
-        codegen(body, env, func_builder, new_func)
-        return (new_func, TYPE_BOX) # TODO: check this
+        for i in range(len(args)):
+            new_func.args[i].name = args[i]
+            cg_set_variable(args[i], new_func.args[i], f_env, func_builder, new_func)
+        body_val, bt = codegen(body, f_env, func_builder, new_func)
+        return (func_builder.ret(body_val), TYPE_NONE) # define doesn't return usable values
 
     elif lookup_icmp(aparse[0]): # It's an integer comparison
         icmp_cmp = lookup_icmp(aparse[0])
@@ -267,14 +267,23 @@ def codegen(aparse, env, cbuilder, cfunction):
         a2 = norm_to_int(a2, v2type, cbuilder)
         cmpval = cbuilder.icmp(icmp_cmp, a1, a2, 'cmptmp')
         return (cmpval, TYPE_CMP)
-    else: # everything else is currently a no-argument function
-        op = lookup(aparse[0])
+    elif lookup_math(aparse[0]): 
+        op = lookup_math(aparse[0])
         (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
         (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
         a1 = norm_to_int(a1, v1type, cbuilder)
         a2 = norm_to_int(a2, v2type, cbuilder)
         mathres = getattr(cbuilder, op)(a1, a2, "intmathop")
         return box_val(mathres, TYPE_INT, cbuilder)
+    elif lookup_module(aparse[0]):
+        f = lookup_module(aparse[0])
+        args = []
+        for a in aparse[1:]:
+            v, t = codegen(a, env, cbuilder, cfunction)
+            args.append(v)
+        return (cbuilder.call(f, args), TYPE_BOX)
+    else:
+        raise ValueError("Unhandled: %s" % aparse[0])
 
         
 # Temporary transition function
@@ -329,12 +338,17 @@ def lookup_icmp(cmp_op):
     return None
 
 
-def lookup(afunc): # FIXME
-    funcs = {'+':'add', '*':'mul', '-':'sub'}
+def lookup_math(afunc):
+    funcs = {'+':'add', '*':'mul', '-':'sub'} # TODO: add more
     if afunc in funcs:
         return funcs[afunc]
-    else:
-        raise ValueError("Undefined function %s" % afunc)
+    return None
+
+def lookup_module(afunc):
+    try:
+        return lisp_module.get_function_named(afunc)
+    except llvm.LLVMException:
+        return None
 
 
 # LLVM functions need to be named. Generate names for anonymous functions
