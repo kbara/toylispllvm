@@ -87,10 +87,6 @@ class TestLispFunctions(unittest.TestCase):
         code = ('(let ((x 3)) (begin (while (< 3 0) (set! x 5)) x))')
         self.assertEqual(3, run_code_to_int(code))
 
-    #def testBoxing(self):
-    #    self.assertEqual(0, run_code_to_int('(begin (box 3) 0)'))
-    #    #self.assertEqual(3, minilisp.run_code_to_int('(unbox (box 3))'))
-
     def testNil(self):
         minilisp.run_code('nil')
 
@@ -101,7 +97,6 @@ class TestLispFunctions(unittest.TestCase):
         self.assertEqual(5, run_code_to_int('(head (cons 5 nil))'))
 
     def testAddBoxed(self):
-        #self.assertEqual(25, run_code_to_int('(add_boxed (box 10) (box 15))'))
         self.assertEqual(25, run_unboxed_code_to_int('(add_boxed 10 15)'))        
 
     def testLetCons(self):

@@ -51,18 +51,6 @@ int32_t add_boxed(struct box *box1, struct box *box2) {
 	assert(box2->data_type == BOX_TYPE);
 	return box1->val + box2->val;
 }
-/*
-int32_t mul_boxed(struct box *box1, struct box *box2) {
-        assert(box1->data_type == BOX_TYPE);
-        assert(box2->data_type == BOX_TYPE);
-        return box1->val * box2->val;
-}
-
-int32_t sub_boxed(struct box *box1, struct box *box2) {
-        assert(box1->data_type == BOX_TYPE);
-        assert(box2->data_type == BOX_TYPE);
-        return box1->val - box2->val;
-}*/
 
 struct box* box_val(lispval_t val, int type) {
 	struct box *bmem = malloc(sizeof(struct box));
