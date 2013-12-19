@@ -33,9 +33,16 @@ TYPE_BOX = 2
 TYPE_CONS = 3
 TYPE_NIL = 4
 TYPE_CMP = 5
+TYPE_LAMBDA = 6
 
 lint = llvm.core.Type.int()
 fvp = llvm.core.Type.pointer(lint) # "Fake void*"
+function_pointer_t = [
+llvm.core.Type.pointer(llvm.core.Type.function(fvp, [])),
+llvm.core.Type.pointer(llvm.core.Type.function(fvp, [fvp])),
+llvm.core.Type.pointer(llvm.core.Type.function(fvp, [fvp, fvp])),
+llvm.core.Type.pointer(llvm.core.Type.function(fvp, [fvp, fvp, fvp]))
+]
 
 # The parser/tokenizer/read_from are stolen from Norvig's lis.py
 def parse(x):
@@ -119,6 +126,11 @@ def tail_list(alist, cbuilder):
     return (cbuilder.call(tail, [alist]), TYPE_CONS)
 
 
+def make_lambda(fp, num_args, cbuilder):
+    ml = lisp_module.get_function_named("make_lambda")
+    return (cbuilder.call(ml, [fp, num_args]), TYPE_LAMBDA)
+
+
 def cg_set_variable(vname, vval, env, cbuilder, cfunction):
     entry = cfunction.get_entry_basic_block()
     builder = llvm.core.Builder.new(entry)
@@ -126,6 +138,23 @@ def cg_set_variable(vname, vval, env, cbuilder, cfunction):
     env[vname] = builder.alloca(fvp, vname)
     # Setting a variable doesn't return a usable value in Scheme
     return (cbuilder.store(vval, env[vname]), TYPE_NONE)
+
+
+def cg_function(fname, fargs, fbody, env, cbuilder, cfunction):
+        funcvars = []
+        for a in fargs:
+            funcvars.append(fvp)
+        func_type = llvm.core.Type.function(fvp, funcvars)
+        new_func = lisp_module.add_function(func_type, fname)
+        f_env = copy.copy(env)
+        bb = new_func.append_basic_block("entry")
+        func_builder = llvm.core.Builder.new(bb)
+        for i in range(len(fargs)):
+            new_func.args[i].name = fargs[i]
+            cg_set_variable(fargs[i], new_func.args[i], f_env, func_builder, new_func)
+        body_val, bt = codegen(fbody, f_env, func_builder, new_func)
+        # CG'ing a function doesn't intrinsically return a value
+        return (func_builder.ret(body_val), TYPE_NONE) 
 
 
 def codegen_boxed(aparse, env, cbuilder, cfunction):
@@ -244,21 +273,17 @@ def codegen(aparse, env, cbuilder, cfunction):
         fname = aparse[1][0]
         args = aparse[1][1:]
         body = aparse[2]
-        
-        funcvars = []
-        for a in args:
-            funcvars.append(fvp)
-        func_type = llvm.core.Type.function(fvp, funcvars)
-        new_func = lisp_module.add_function(func_type, fname)
-        f_env = copy.copy(env)
-        bb = new_func.append_basic_block("entry")
-        func_builder = llvm.core.Builder.new(bb)
-        for i in range(len(args)):
-            new_func.args[i].name = args[i]
-            cg_set_variable(args[i], new_func.args[i], f_env, func_builder, new_func)
-        body_val, bt = codegen(body, f_env, func_builder, new_func)
-        return (func_builder.ret(body_val), TYPE_NONE) # define doesn't return usable values
-
+        return cg_function(fname, args, body, env, cbuilder, cfunction)
+    elif aparse[0] == 'lambda':
+        fname = gen_lambda_name()
+        args = aparse[1]
+        body = aparse[2]
+        cg_function(fname, args, body, env, cbuilder, cfunction)
+        f = lookup_module(fname)
+        f_desc_reg = cbuilder.alloca(fvp, "a register to point to the function")
+        cbuilder.store(f, f_desc_reg)
+        num_args = llvm.core.Constant.int(lint, len(args))
+        return make_lambda(f_desc_reg, num_args, cbuilder)
     elif lookup_icmp(aparse[0]): # It's an integer comparison
         icmp_cmp = lookup_icmp(aparse[0])
         (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
@@ -282,6 +307,18 @@ def codegen(aparse, env, cbuilder, cfunction):
             v, t = codegen(a, env, cbuilder, cfunction)
             args.append(v)
         return (cbuilder.call(f, args), TYPE_BOX)
+    elif env.has_key(aparse[0]):
+        lambda_reg = env[aparse[0]]
+        args = []
+        for a in aparse[1:]:
+            val, vtype = codegen(a, env, cbuilder, cfunction)
+            args.append(val)
+        lambda_info = cbuilder.load(lambda_reg)
+        lgf = lisp_module.get_function_named("lambda_get_fp")
+        raw_fp = cbuilder.call(lgf, [lambda_info])
+        f_proto = function_pointer_t[len(args)]
+        real_fp = cbuilder.bitcast(raw_fp, f_proto, "function pointer")
+        return (cbuilder.call(real_fp, args), TYPE_BOX)
     else:
         raise ValueError("Unhandled: %s" % aparse[0])
 
@@ -327,6 +364,9 @@ def add_runtime_functions(module):
     lisp_module.add_function(llvm.core.Type.function(lint, [fvp]), "get_int_from_box")
     lisp_module.add_function(llvm.core.Type.function(fvp, [fvp]), "head")
     lisp_module.add_function(llvm.core.Type.function(fvp, [fvp]), "tail")
+    lisp_module.add_function(llvm.core.Type.function(fvp, [llvm.core.Type.pointer(fvp), lint]), "make_lambda")
+    lisp_module.add_function(llvm.core.Type.function(lint, [fvp]), "lambda_num_args")
+    lisp_module.add_function(llvm.core.Type.function(fvp, [fvp]), "lambda_get_fp")
 
 
 def lookup_icmp(cmp_op):

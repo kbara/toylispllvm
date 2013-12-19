@@ -16,15 +16,16 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
 
-typedef intptr_t lispval_t; /* Consider changing this to be 128-bit for quadfloats */
+typedef intptr_t lispval_t;
 
 #define CONS_TYPE 0x636f6e73 /* "cons" */
 #define BOX_TYPE 0x626f78 /* "box" */
+#define LAMBDA_TYPE 0x6c6d6264 /* "lmda" */
 
 struct box {
 	int data_type;
@@ -36,6 +37,12 @@ struct cons {
 	int data_type;
 	void *car;
 	void *cdr;
+};
+
+struct lambda {
+	int data_type;
+	void *function_ptr;
+	int num_args;
 };
 
 /* TODO: check that boxN->type is int */
@@ -72,6 +79,26 @@ struct box* box_val(lispval_t val, int type) {
 /* Convenience, for dealing with LLVM */
 struct box* box_ptr(void *val, int type) {
 	return box_val((lispval_t) val, type);
+}
+
+struct lambda* make_lambda(void **fp, int num_args) {
+	struct lambda *lmem = malloc(sizeof(struct lambda));
+	if (!lmem) {
+		exit(1);
+	}
+	printf("fp is %i, *fp is %i\n", fp, *fp);
+	lmem->data_type = LAMBDA_TYPE;
+	lmem->function_ptr = *fp;
+	lmem->num_args = num_args;
+	return lmem;
+}
+
+int lambda_num_args(struct lambda *alambda) {
+	return alambda->num_args;
+}
+
+int lambda_get_fp(struct lambda *alambda) {
+	return alambda->function_ptr;
 }
 
 struct cons* cons(struct box *val, struct cons *next) {

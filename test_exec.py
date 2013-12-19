@@ -113,8 +113,8 @@ class TestLispFunctions(unittest.TestCase):
     def testTail(self):
         self.assertEqual(4, run_code_to_int('(head (tail (cons 3 (cons 4 nil))))'))
 
-    #def testLambda(self):
-    #    self.assertEqual(5, run_code_to_int('(let ((tfunc (lambda (x y) (+ x y)))) (tfunc 2 3))'))
+    def testLambda(self):
+        self.assertEqual(5, run_code_to_int('(let ((tfunc (lambda (x y) (+ x y)))) (tfunc 2 3))'))
 
     def testDefineVar(self):
         self.assertEqual(3, run_code_to_int('(begin (define a 3) a)'))
