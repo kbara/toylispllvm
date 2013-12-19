@@ -21,29 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include <assert.h>
 
-typedef intptr_t lispval_t;
-
-#define CONS_TYPE 0x636f6e73 /* "cons" */
-#define BOX_TYPE 0x626f78 /* "box" */
-#define LAMBDA_TYPE 0x6c6d6264 /* "lmda" */
-
-struct box {
-	int data_type;
-	lispval_t val;
-	int type;
-};
-
-struct cons {
-	int data_type;
-	void *car;
-	void *cdr;
-};
-
-struct lambda {
-	int data_type;
-	void *function_ptr;
-	int num_args;
-};
+#include "runtime.h"
 
 /* TODO: check that boxN->type is int */
 int32_t add_boxed(struct box *box1, struct box *box2) {
