@@ -50,7 +50,7 @@ struct box* box_ptr(void *val, int type);
 
 struct lambda* make_lambda(void **fp, int num_args);
 int lambda_num_args(struct lambda *alambda);
-int lambda_get_fp(struct lambda *alambda);
+void* lambda_get_fp(struct lambda *alambda);
 
 struct cons* cons(struct box *val, struct cons *next);
 void* head(struct cons* alist);

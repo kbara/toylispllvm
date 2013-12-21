@@ -16,7 +16,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -52,7 +51,6 @@ struct lambda* make_lambda(void **fp, int num_args) {
 	if (!lmem) {
 		exit(1);
 	}
-	printf("fp is %i, *fp is %i\n", fp, *fp);
 	lmem->data_type = LAMBDA_TYPE;
 	lmem->function_ptr = *fp;
 	lmem->num_args = num_args;
@@ -63,7 +61,7 @@ int lambda_num_args(struct lambda *alambda) {
 	return alambda->num_args;
 }
 
-int lambda_get_fp(struct lambda *alambda) {
+void* lambda_get_fp(struct lambda *alambda) {
 	return alambda->function_ptr;
 }
 
