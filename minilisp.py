@@ -336,7 +336,7 @@ def norm_to_int(val, vtype, cbuilder):
 
 def compile_line(aparse):
     global lisp_module
-    llvm.core.load_library_permanently("/home/me/hs/lisp/lisp_runtime.so.0.0.1")
+    llvm.core.load_library_permanently("./lisp_runtime.so.0.0.1")
     lisp_module = llvm.core.Module.new("minilisp")
     add_runtime_functions(lisp_module)
     func_type = llvm.core.Type.function(lint, [])
