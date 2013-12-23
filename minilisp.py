@@ -35,6 +35,13 @@ TYPE_NIL = 4
 TYPE_CMP = 5
 TYPE_LAMBDA = 6
 
+class CompilerInternals(object):
+    def __init__(self, env, builder, function, module):
+        self.env = env
+        self.builder = builder
+        self.function = function
+        self.module = module
+
 lint = llvm.core.Type.int()
 fvp = llvm.core.Type.pointer(lint) # "Fake void*"
 function_pointer_t = [
@@ -131,194 +138,197 @@ def make_lambda(fp, num_args, cbuilder):
     return (cbuilder.call(ml, [fp, num_args]), TYPE_LAMBDA)
 
 
-def cg_set_variable(vname, vval, env, cbuilder, cfunction):
-    entry = cfunction.get_entry_basic_block()
+def cg_set_variable(vname, vval, ci):
+    entry = ci.function.get_entry_basic_block()
     builder = llvm.core.Builder.new(entry)
     builder.position_at_beginning(entry)
-    env[vname] = builder.alloca(fvp, vname)
+    ci.env[vname] = builder.alloca(fvp, vname)
     # Setting a variable doesn't return a usable value in Scheme
-    return (cbuilder.store(vval, env[vname]), TYPE_NONE)
+    return (ci.builder.store(vval, ci.env[vname]), TYPE_NONE)
 
 
-def cg_function(fname, fargs, fbody, env, cbuilder, cfunction):
+def cg_function(fname, fargs, fbody, ci):
         funcvars = []
         for a in fargs:
             funcvars.append(fvp)
         func_type = llvm.core.Type.function(fvp, funcvars)
         new_func = lisp_module.add_function(func_type, fname)
-        f_env = copy.copy(env)
+        f_env = copy.copy(ci.env)
         bb = new_func.append_basic_block("entry")
         func_builder = llvm.core.Builder.new(bb)
+        new_function_ci = CompilerInternals(f_env, func_builder, new_func, ci.module)
         for i in range(len(fargs)):
             new_func.args[i].name = fargs[i]
-            cg_set_variable(fargs[i], new_func.args[i], f_env, func_builder, new_func)
-        body_val, bt = codegen(fbody, f_env, func_builder, new_func)
+            cg_set_variable(fargs[i], new_func.args[i], new_function_ci)
+        body_val, bt = codegen(fbody, new_function_ci)
         # CG'ing a function doesn't intrinsically return a value
         return (func_builder.ret(body_val), TYPE_NONE) 
 
 
-def codegen_boxed(aparse, env, cbuilder, cfunction):
+def codegen_boxed(aparse, ci):
     if aparse[0] == 'box':
-        val, vtype = codegen(aparse[1], env, cbuilder, cfunction)
+        val, vtype = codegen(aparse[1], ci)
         assert vtype != TYPE_BOX # don't box boxes
-        return box_val(val, vtype, cbuilder)
+        return box_val(val, vtype, ci.builder)
 
     elif aparse[0] == 'gifb':
-        gboxed, gtype = codegen(aparse[1], env, cbuilder, cfunction)
+        gboxed, gtype = codegen(aparse[1], ci)
         assert gtype == TYPE_BOX
-        return gifb(gboxed, cbuilder)
+        return gifb(gboxed, ci.builder)
     elif aparse[0] == 'add_boxed': # another semi-unlispy exercise
         if len(aparse) != 3:
             raise RuntimeError("Wrong number of arguments to add_boxed")
-        v1 = codegen(aparse[1], env, cbuilder, cfunction)[0]
-        v2 = codegen(aparse[2], env, cbuilder, cfunction)[0]
+        v1 = codegen(aparse[1], ci)[0]
+        v2 = codegen(aparse[2], ci)[0]
         
         callee = lisp_module.get_function_named('add_boxed')
-        return (cbuilder.call(callee, [v1, v2], 'add_boxed'), TYPE_INT)
-    
+        return (ci.builder.call(callee, [v1, v2], 'add_boxed'), TYPE_INT)
 
-def codegen(aparse, env, cbuilder, cfunction):
+    
+def codegen(aparse, ci):
     if aparse in ["'()", "()", "nil", "'nil"]:
         return (llvm.core.Constant.null(llvm.core.Type.pointer(lint)), TYPE_NIL)
     if is_atom(aparse):
         if is_integer(aparse):
-            return box_val(llvm.core.Constant.int(lint, aparse), TYPE_INT, cbuilder)
+            return box_val(llvm.core.Constant.int(lint, aparse), TYPE_INT, ci.builder)
         elif is_variable(aparse):
-            return (cbuilder.load(env[aparse]), TYPE_BOX) # FIXME_t
+            return (ci.builder.load(ci.env[aparse]), TYPE_BOX) # FIXME_t
         else:
             raise ValueError("unhandled atom")
 
     elif aparse[0] in ['box', 'add_boxed', 'gifb']:
-        return codegen_boxed(aparse, env, cbuilder, cfunction)
+        return codegen_boxed(aparse, ci)
     elif aparse[0] == 'cons':
-        val = codegen(aparse[1], env, cbuilder, cfunction)
+        val = codegen(aparse[1], ci)
         assert val[1] == TYPE_BOX
-        onto = codegen(aparse[2], env, cbuilder, cfunction)
+        onto = codegen(aparse[2], ci)
         # TODO/FIXME: afaik, TYPE_BOX isn't actually for cons, but dotted pairs...
         assert onto[1] == TYPE_CONS or onto[1] == TYPE_NIL or onto[1] == TYPE_BOX
-        return cons_val(val[0], onto[0], cbuilder)
+        return cons_val(val[0], onto[0], ci.builder)
     elif aparse[0] == 'head':
-        thelist, ltype = codegen(aparse[1], env, cbuilder, cfunction)
-        return head_list(thelist, cbuilder)
+        thelist, ltype = codegen(aparse[1], ci)
+        return head_list(thelist, ci.builder)
     elif aparse[0] == 'tail':
-        thelist, ltype = codegen(aparse[1], env, cbuilder, cfunction)
-        return tail_list(thelist, cbuilder)
+        thelist, ltype = codegen(aparse[1], ci)
+        return tail_list(thelist, ci.builder)
     elif aparse[0] == 'let':
-        env2 = copy.copy(env)
+        env2 = copy.copy(ci.env)
         varbindings = aparse[1]
         for vb in varbindings:
             varname = vb[0]
-            (varval, vvtype) = codegen(vb[1], env, cbuilder, cfunction)
-            cg_set_variable(varname, varval, env2, cbuilder, cfunction)
-        return codegen(aparse[2], env2, cbuilder, cfunction)
+            (varval, vvtype) = codegen(vb[1], ci)
+            new_env_ci = CompilerInternals(env2, ci.builder, ci.function, ci.module)
+            cg_set_variable(varname, varval, new_env_ci)
+        new_let_ci = CompilerInternals(env2, ci.builder, ci.function, ci.module)
+        return codegen(aparse[2], new_let_ci)
     elif aparse[0] == 'set!':
         varname = aparse[1]
-        (val, valtype) = codegen(aparse[2], env, cbuilder, cfunction)
-        if not env.has_key(varname):
-            env[varname] = cbuilder.alloca(fvp, varname)
-        cbuilder.store(val, env[varname])
+        (val, valtype) = codegen(aparse[2], ci)
+        if not ci.env.has_key(varname):
+            ci.env[varname] = ci.builder.alloca(fvp, varname)
+        ci.builder.store(val, ci.env[varname])
         return (None, TYPE_NONE)
     # http://www.llvmpy.org/llvmpy-doc/0.9/doc/kaleidoscope/PythonLangImpl3.html
     # heavily influenced the 'if' code.
     elif aparse[0] == 'if':
-        (condition, cvtype) = codegen(aparse[1], env, cbuilder, cfunction)
+        (condition, cvtype) = codegen(aparse[1], ci)
         iftrue = aparse[2]
         iffalse = aparse[3]
 
-        then_block = cfunction.append_basic_block('then')
-        else_block = cfunction.append_basic_block('else')
-        merge_block = cfunction.append_basic_block('ifcond')
-        cbuilder.cbranch(condition, then_block, else_block)
+        then_block = ci.function.append_basic_block('then')
+        else_block = ci.function.append_basic_block('else')
+        merge_block = ci.function.append_basic_block('ifcond')
+        ci.builder.cbranch(condition, then_block, else_block)
 
-        cbuilder.position_at_end(then_block)
-        (then_value, tvtype) = codegen(iftrue, env, cbuilder, cfunction)
-        cbuilder.branch(merge_block)
+        ci.builder.position_at_end(then_block)
+        (then_value, tvtype) = codegen(iftrue, ci)
+        ci.builder.branch(merge_block)
 
-        then_block = cbuilder.basic_block
-        cbuilder.position_at_end(else_block)
-        (else_value, evtype) = codegen(iffalse, env, cbuilder, cfunction)
-        cbuilder.branch(merge_block)
+        then_block = ci.builder.basic_block
+        ci.builder.position_at_end(else_block)
+        (else_value, evtype) = codegen(iffalse, ci)
+        ci.builder.branch(merge_block)
         
-        else_block = cbuilder.basic_block
-        cbuilder.position_at_end(merge_block)
-        phi = cbuilder.phi(fvp, 'iftmp')
+        else_block = ci.builder.basic_block
+        ci.builder.position_at_end(merge_block)
+        phi = ci.builder.phi(fvp, 'iftmp')
         phi.add_incoming(then_value, then_block)
         phi.add_incoming(else_value, else_block)
         return (phi, tvtype) # FIXME_t; this assumes tvtype == evtype
     elif aparse[0] == 'while': #unlispy exercise...
-        condition_block = cfunction.append_basic_block('loop_header')
-        loop_block = cfunction.append_basic_block('loop_body')
-        after_block = cfunction.append_basic_block('after_loop')
+        condition_block = ci.function.append_basic_block('loop_header')
+        loop_block = ci.function.append_basic_block('loop_body')
+        after_block = ci.function.append_basic_block('after_loop')
         # Insert an explicit fallthrough from the current block to the condition_block.
-        cbuilder.branch(condition_block)
-        cbuilder.position_at_end(condition_block)
-        (condition, cvtype) = codegen(aparse[1], env, cbuilder, cfunction)
-        cbuilder.cbranch(condition, loop_block, after_block)
-        cbuilder.position_at_end(loop_block)
-        (body, bvtype) = codegen(aparse[2], env, cbuilder, cfunction)
-        cbuilder.branch(condition_block)
-        cbuilder.position_at_end(after_block)
+        ci.builder.branch(condition_block)
+        ci.builder.position_at_end(condition_block)
+        (condition, cvtype) = codegen(aparse[1], ci)
+        ci.builder.cbranch(condition, loop_block, after_block)
+        ci.builder.position_at_end(loop_block)
+        (body, bvtype) = codegen(aparse[2], ci)
+        ci.builder.branch(condition_block)
+        ci.builder.position_at_end(after_block)
         return (None, TYPE_NONE)
     elif aparse[0] == 'begin':
         ret = None
         rvtype = None
         for stmt in aparse[1:]:
-            (ret, rvtype) = codegen(stmt, env, cbuilder, cfunction)
+            (ret, rvtype) = codegen(stmt, ci)
         return (ret, rvtype)
     elif aparse[0] == 'define':
         if is_atom(aparse[1]): # It's a variable definition
-            varval, vtype = codegen(aparse[2], env, cbuilder, cfunction)
-            return cg_set_variable(aparse[1], varval, env, cbuilder, cfunction)
+            varval, vtype = codegen(aparse[2], ci)
+            return cg_set_variable(aparse[1], varval, ci)
         # Otherwise, it's a function definition
         fname = aparse[1][0]
         args = aparse[1][1:]
         body = aparse[2]
-        return cg_function(fname, args, body, env, cbuilder, cfunction)
+        return cg_function(fname, args, body, ci)
     elif aparse[0] == 'lambda':
         fname = gen_lambda_name()
         args = aparse[1]
         body = aparse[2]
-        cg_function(fname, args, body, env, cbuilder, cfunction)
+        cg_function(fname, args, body, ci)
         f = lookup_module(fname)
-        f_desc_reg = cbuilder.alloca(fvp, "a register to point to the function")
-        cbuilder.store(f, f_desc_reg)
+        f_desc_reg = ci.builder.alloca(fvp, "a register to point to the function")
+        ci.builder.store(f, f_desc_reg)
         num_args = llvm.core.Constant.int(lint, len(args))
-        return make_lambda(f_desc_reg, num_args, cbuilder)
+        return make_lambda(f_desc_reg, num_args, ci.builder)
     elif lookup_icmp(aparse[0]): # It's an integer comparison
         icmp_cmp = lookup_icmp(aparse[0])
-        (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
-        (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
-        a1 = norm_to_int(a1, v1type, cbuilder)
-        a2 = norm_to_int(a2, v2type, cbuilder)
-        cmpval = cbuilder.icmp(icmp_cmp, a1, a2, 'cmptmp')
+        (a1, v1type) = codegen(aparse[1], ci)
+        (a2, v2type) = codegen(aparse[2], ci)
+        a1 = norm_to_int(a1, v1type, ci.builder)
+        a2 = norm_to_int(a2, v2type, ci.builder)
+        cmpval = ci.builder.icmp(icmp_cmp, a1, a2, 'cmptmp')
         return (cmpval, TYPE_CMP)
     elif lookup_math(aparse[0]): 
         op = lookup_math(aparse[0])
-        (a1, v1type) = codegen(aparse[1], env, cbuilder, cfunction)
-        (a2, v2type) = codegen(aparse[2], env, cbuilder, cfunction)
-        a1 = norm_to_int(a1, v1type, cbuilder)
-        a2 = norm_to_int(a2, v2type, cbuilder)
-        mathres = getattr(cbuilder, op)(a1, a2, "intmathop")
-        return box_val(mathres, TYPE_INT, cbuilder)
+        (a1, v1type) = codegen(aparse[1], ci)
+        (a2, v2type) = codegen(aparse[2], ci)
+        a1 = norm_to_int(a1, v1type, ci.builder)
+        a2 = norm_to_int(a2, v2type, ci.builder)
+        mathres = getattr(ci.builder, op)(a1, a2, "intmathop")
+        return box_val(mathres, TYPE_INT, ci.builder)
     elif lookup_module(aparse[0]):
         f = lookup_module(aparse[0])
         args = []
         for a in aparse[1:]:
-            v, t = codegen(a, env, cbuilder, cfunction)
+            v, t = codegen(a, ci)
             args.append(v)
-        return (cbuilder.call(f, args), TYPE_BOX)
-    elif env.has_key(aparse[0]):
-        lambda_reg = env[aparse[0]]
+        return (ci.builder.call(f, args), TYPE_BOX)
+    elif ci.env.has_key(aparse[0]):
+        lambda_reg = ci.env[aparse[0]]
         args = []
         for a in aparse[1:]:
-            val, vtype = codegen(a, env, cbuilder, cfunction)
+            val, vtype = codegen(a, ci)
             args.append(val)
-        lambda_info = cbuilder.load(lambda_reg)
+        lambda_info = ci.builder.load(lambda_reg)
         lgf = lisp_module.get_function_named("lambda_get_fp")
-        raw_fp = cbuilder.call(lgf, [lambda_info])
+        raw_fp = ci.builder.call(lgf, [lambda_info])
         f_proto = function_pointer_t[len(args)]
-        real_fp = cbuilder.bitcast(raw_fp, f_proto, "function pointer")
-        return (cbuilder.call(real_fp, args), TYPE_BOX)
+        real_fp = ci.builder.bitcast(raw_fp, f_proto, "function pointer")
+        return (ci.builder.call(real_fp, args), TYPE_BOX)
     else:
         raise ValueError("Unhandled: %s" % aparse[0])
 
@@ -347,7 +357,9 @@ def compile_line(aparse):
     f = lisp_module.add_function(func_type, "builtin_toplevelf")
     bb = f.append_basic_block("entry")
     cbuilder = llvm.core.Builder.new(bb)
-    (codeval, codetype) = codegen(aparse, {}, cbuilder, f)
+    ci = CompilerInternals({}, cbuilder, f, lisp_module)
+    #(codeval, codetype) = codegen(aparse, {}, cbuilder, f)
+    (codeval, codetype) = codegen(aparse, ci)
     cbuilder.ret(codeval)
     print >> sys.stderr, "module: %s" % lisp_module
     print >> sys.stderr, "function: %s" % f
