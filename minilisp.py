@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 #Minilisp: a toy lisp-to-be, with an LLVM backend
 #Copyright (C) 2013 Kat
 
@@ -106,36 +107,36 @@ def is_variable(aparse):
     return True # FIXME    
 
 
-def gifb(abox, cbuilder):
-    g = lisp_module.get_function_named("get_int_from_box")
-    return (cbuilder.call(g, [abox]), TYPE_INT)
+def gifb(abox, ci):
+    g = ci.module.get_function_named("get_int_from_box")
+    return (ci.builder.call(g, [abox]), TYPE_INT)
 
 
-def cons_val(val, point_to, cbuilder):
-    cv = lisp_module.get_function_named("cons")
-    return (cbuilder.call(cv, [val, point_to]), TYPE_CONS)
+def cons_val(val, point_to, ci):
+    cv = ci.module.get_function_named("cons")
+    return (ci.builder.call(cv, [val, point_to]), TYPE_CONS)
 
 
-def box_val(val, vtype, cbuilder):
+def box_val(val, vtype, ci):
     assert vtype != TYPE_BOX # Don't box boxes
-    bv = lisp_module.get_function_named("box_val")
+    bv = ci.module.get_function_named("box_val")
     vt = llvm.core.Constant.int(lint, vtype)
-    return (cbuilder.call(bv, [val, vt]), TYPE_BOX)
+    return (ci.builder.call(bv, [val, vt]), TYPE_BOX)
 
 
-def head_list(alist, cbuilder):
-    head = lisp_module.get_function_named("head")
-    return (cbuilder.call(head, [alist]), TYPE_BOX) # FIXME_t
+def head_list(alist, ci):
+    head = ci.module.get_function_named("head")
+    return (ci.builder.call(head, [alist]), TYPE_BOX) # FIXME_t
 
 
-def tail_list(alist, cbuilder):
-    tail = lisp_module.get_function_named("tail")
-    return (cbuilder.call(tail, [alist]), TYPE_CONS)
+def tail_list(alist, ci):
+    tail = ci.module.get_function_named("tail")
+    return (ci.builder.call(tail, [alist]), TYPE_CONS)
 
 
-def make_lambda(fp, num_args, cbuilder):
-    ml = lisp_module.get_function_named("make_lambda")
-    return (cbuilder.call(ml, [fp, num_args]), TYPE_LAMBDA)
+def make_lambda(fp, num_args, ci):
+    ml = ci.module.get_function_named("make_lambda")
+    return (ci.builder.call(ml, [fp, num_args]), TYPE_LAMBDA)
 
 
 def cg_set_variable(vname, vval, ci):
@@ -152,7 +153,7 @@ def cg_function(fname, fargs, fbody, ci):
         for a in fargs:
             funcvars.append(fvp)
         func_type = llvm.core.Type.function(fvp, funcvars)
-        new_func = lisp_module.add_function(func_type, fname)
+        new_func = ci.module.add_function(func_type, fname)
         f_env = copy.copy(ci.env)
         bb = new_func.append_basic_block("entry")
         func_builder = llvm.core.Builder.new(bb)
@@ -169,19 +170,19 @@ def codegen_boxed(aparse, ci):
     if aparse[0] == 'box':
         val, vtype = codegen(aparse[1], ci)
         assert vtype != TYPE_BOX # don't box boxes
-        return box_val(val, vtype, ci.builder)
+        return box_val(val, vtype, ci)
 
     elif aparse[0] == 'gifb':
         gboxed, gtype = codegen(aparse[1], ci)
         assert gtype == TYPE_BOX
-        return gifb(gboxed, ci.builder)
+        return gifb(gboxed, ci)
     elif aparse[0] == 'add_boxed': # another semi-unlispy exercise
         if len(aparse) != 3:
             raise RuntimeError("Wrong number of arguments to add_boxed")
         v1 = codegen(aparse[1], ci)[0]
         v2 = codegen(aparse[2], ci)[0]
         
-        callee = lisp_module.get_function_named('add_boxed')
+        callee = ci.module.get_function_named('add_boxed')
         return (ci.builder.call(callee, [v1, v2], 'add_boxed'), TYPE_INT)
 
     
@@ -190,7 +191,7 @@ def codegen(aparse, ci):
         return (llvm.core.Constant.null(llvm.core.Type.pointer(lint)), TYPE_NIL)
     if is_atom(aparse):
         if is_integer(aparse):
-            return box_val(llvm.core.Constant.int(lint, aparse), TYPE_INT, ci.builder)
+            return box_val(llvm.core.Constant.int(lint, aparse), TYPE_INT, ci)
         elif is_variable(aparse):
             return (ci.builder.load(ci.env[aparse]), TYPE_BOX) # FIXME_t
         else:
@@ -204,13 +205,13 @@ def codegen(aparse, ci):
         onto = codegen(aparse[2], ci)
         # TODO/FIXME: afaik, TYPE_BOX isn't actually for cons, but dotted pairs...
         assert onto[1] == TYPE_CONS or onto[1] == TYPE_NIL or onto[1] == TYPE_BOX
-        return cons_val(val[0], onto[0], ci.builder)
+        return cons_val(val[0], onto[0], ci)
     elif aparse[0] == 'head':
         thelist, ltype = codegen(aparse[1], ci)
-        return head_list(thelist, ci.builder)
+        return head_list(thelist, ci)
     elif aparse[0] == 'tail':
         thelist, ltype = codegen(aparse[1], ci)
-        return tail_list(thelist, ci.builder)
+        return tail_list(thelist, ci)
     elif aparse[0] == 'let':
         env2 = copy.copy(ci.env)
         varbindings = aparse[1]
@@ -285,33 +286,33 @@ def codegen(aparse, ci):
         body = aparse[2]
         return cg_function(fname, args, body, ci)
     elif aparse[0] == 'lambda':
-        fname = gen_lambda_name()
+        fname = gen_lambda_name(ci.module)
         args = aparse[1]
         body = aparse[2]
         cg_function(fname, args, body, ci)
-        f = lookup_module(fname)
+        f = lookup_module(fname, ci.module)
         f_desc_reg = ci.builder.alloca(fvp, "a register to point to the function")
         ci.builder.store(f, f_desc_reg)
         num_args = llvm.core.Constant.int(lint, len(args))
-        return make_lambda(f_desc_reg, num_args, ci.builder)
+        return make_lambda(f_desc_reg, num_args, ci)
     elif lookup_icmp(aparse[0]): # It's an integer comparison
         icmp_cmp = lookup_icmp(aparse[0])
         (a1, v1type) = codegen(aparse[1], ci)
         (a2, v2type) = codegen(aparse[2], ci)
-        a1 = norm_to_int(a1, v1type, ci.builder)
-        a2 = norm_to_int(a2, v2type, ci.builder)
+        a1 = norm_to_int(a1, v1type, ci)
+        a2 = norm_to_int(a2, v2type, ci)
         cmpval = ci.builder.icmp(icmp_cmp, a1, a2, 'cmptmp')
         return (cmpval, TYPE_CMP)
     elif lookup_math(aparse[0]): 
         op = lookup_math(aparse[0])
         (a1, v1type) = codegen(aparse[1], ci)
         (a2, v2type) = codegen(aparse[2], ci)
-        a1 = norm_to_int(a1, v1type, ci.builder)
-        a2 = norm_to_int(a2, v2type, ci.builder)
+        a1 = norm_to_int(a1, v1type, ci)
+        a2 = norm_to_int(a2, v2type, ci)
         mathres = getattr(ci.builder, op)(a1, a2, "intmathop")
-        return box_val(mathres, TYPE_INT, ci.builder)
-    elif lookup_module(aparse[0]):
-        f = lookup_module(aparse[0])
+        return box_val(mathres, TYPE_INT, ci)
+    elif lookup_module(aparse[0], ci.module):
+        f = lookup_module(aparse[0], ci.module)
         args = []
         for a in aparse[1:]:
             v, t = codegen(a, ci)
@@ -324,7 +325,7 @@ def codegen(aparse, ci):
             val, vtype = codegen(a, ci)
             args.append(val)
         lambda_info = ci.builder.load(lambda_reg)
-        lgf = lisp_module.get_function_named("lambda_get_fp")
+        lgf = ci.module.get_function_named("lambda_get_fp")
         raw_fp = ci.builder.call(lgf, [lambda_info])
         f_proto = function_pointer_t[len(args)]
         real_fp = ci.builder.bitcast(raw_fp, f_proto, "function pointer")
@@ -334,10 +335,10 @@ def codegen(aparse, ci):
 
         
 # Temporary transition function
-def norm_to_int(val, vtype, cbuilder):
+def norm_to_int(val, vtype, ci):
     normed = val
     if vtype == TYPE_BOX:
-        normed, newt = gifb(val, cbuilder)
+        normed, newt = gifb(val, ci)
         assert newt == TYPE_INT
     else:
         assert vtype == TYPE_INT
@@ -348,7 +349,7 @@ def norm_to_int(val, vtype, cbuilder):
 #  File "/usr/lib/python2.7/dist-packages/llvmpy/capsule.py", line 114, in release_ownership
 #    raise Exception("Already released")
 def compile_line(aparse):
-    global lisp_module
+    #global lisp_module
     llvm.core.load_library_permanently("./lisp_runtime.so.0.0.1")
     module = llvm.core.Module.new("minilisp")
     lisp_module = module
@@ -358,7 +359,6 @@ def compile_line(aparse):
     bb = f.append_basic_block("entry")
     cbuilder = llvm.core.Builder.new(bb)
     ci = CompilerInternals({}, cbuilder, f, lisp_module)
-    #(codeval, codetype) = codegen(aparse, {}, cbuilder, f)
     (codeval, codetype) = codegen(aparse, ci)
     cbuilder.ret(codeval)
     print >> sys.stderr, "module: %s" % lisp_module
@@ -374,16 +374,16 @@ def execute(module, llvmfunc):
     return retval
 
 
-def add_runtime_functions(module):
-    lisp_module.add_function(llvm.core.Type.function(lint, [fvp, fvp]), "add_boxed")
-    lisp_module.add_function(llvm.core.Type.function(fvp, [lint, lint]), "box_val")
-    lisp_module.add_function(llvm.core.Type.function(fvp, [fvp, fvp]), "cons")
-    lisp_module.add_function(llvm.core.Type.function(lint, [fvp]), "get_int_from_box")
-    lisp_module.add_function(llvm.core.Type.function(fvp, [fvp]), "head")
-    lisp_module.add_function(llvm.core.Type.function(fvp, [fvp]), "tail")
-    lisp_module.add_function(llvm.core.Type.function(fvp, [llvm.core.Type.pointer(fvp), lint]), "make_lambda")
-    lisp_module.add_function(llvm.core.Type.function(lint, [fvp]), "lambda_num_args")
-    lisp_module.add_function(llvm.core.Type.function(fvp, [fvp]), "lambda_get_fp")
+def add_runtime_functions(to_module):
+    to_module.add_function(llvm.core.Type.function(lint, [fvp, fvp]), "add_boxed")
+    to_module.add_function(llvm.core.Type.function(fvp, [lint, lint]), "box_val")
+    to_module.add_function(llvm.core.Type.function(fvp, [fvp, fvp]), "cons")
+    to_module.add_function(llvm.core.Type.function(lint, [fvp]), "get_int_from_box")
+    to_module.add_function(llvm.core.Type.function(fvp, [fvp]), "head")
+    to_module.add_function(llvm.core.Type.function(fvp, [fvp]), "tail")
+    to_module.add_function(llvm.core.Type.function(fvp, [llvm.core.Type.pointer(fvp), lint]), "make_lambda")
+    to_module.add_function(llvm.core.Type.function(lint, [fvp]), "lambda_num_args")
+    to_module.add_function(llvm.core.Type.function(fvp, [fvp]), "lambda_get_fp")
 
 
 def lookup_icmp(cmp_op):
@@ -401,21 +401,21 @@ def lookup_math(afunc):
         return funcs[afunc]
     return None
 
-def lookup_module(afunc):
+def lookup_module(afunc, in_module):
     try:
-        return lisp_module.get_function_named(afunc)
+        return in_module.get_function_named(afunc)
     except llvm.LLVMException:
         return None
 
 
 # LLVM functions need to be named. Generate names for anonymous functions
-def gen_lambda_name():
+def gen_lambda_name(in_module):
     template = "__lambda%s"
     num = random.randint(10000, 2000000000)
     fname = template % num
     # Make sure it's not already used
     try:
-        lisp_module.get_function_named(fname)
+        in_module.get_function_named(fname)
     except llvm.LLVMException:
         return fname
 
