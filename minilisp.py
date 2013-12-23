@@ -345,14 +345,9 @@ def norm_to_int(val, vtype, ci):
     return normed
 
 
-# The module/lisp_module dance is to avoid spurious test errors:
-#  File "/usr/lib/python2.7/dist-packages/llvmpy/capsule.py", line 114, in release_ownership
-#    raise Exception("Already released")
 def compile_line(aparse):
-    #global lisp_module
     llvm.core.load_library_permanently("./lisp_runtime.so.0.0.1")
-    module = llvm.core.Module.new("minilisp")
-    lisp_module = module
+    lisp_module = llvm.core.Module.new("minilisp")
     add_runtime_functions(lisp_module)
     func_type = llvm.core.Type.function(lint, [])
     f = lisp_module.add_function(func_type, "builtin_toplevelf")
@@ -363,8 +358,7 @@ def compile_line(aparse):
     cbuilder.ret(codeval)
     print >> sys.stderr, "module: %s" % lisp_module
     print >> sys.stderr, "function: %s" % f
-    lisp_module = None
-    return module, f
+    return lisp_module, f
 
 
 def execute(module, llvmfunc):
