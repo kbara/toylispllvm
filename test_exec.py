@@ -19,7 +19,7 @@ class TestLispFunctions(unittest.TestCase):
         self.assertEqual(3, run_code_to_int('3'))
 
     def testMath(self):
-        self.assertEqual(7, run_code_to_int('(+ 2 (- (* 5 2) 5))'))
+        self.assertEqual(7, run_code_to_int('(+ 2 (- (* 5 3) 10))'))
 
     def testLet(self):
         self.assertEqual(9, run_code_to_int('(let ((x 1)) (+ x 8))'))
@@ -124,6 +124,23 @@ class TestLispFunctions(unittest.TestCase):
         self.assertEqual(1, ret2)
         ret3 = 1 & run_unboxed_code_to_int('(< 2 4 3)')
         self.assertEqual(0, ret3)
+
+
+    def testNAdd(self):
+        ret1 = run_code_to_int('(+)')
+        self.assertEqual(0, ret1)
+        ret2 = run_code_to_int('(+ 2)')
+        self.assertEqual(2, ret2)
+        ret3 = run_code_to_int('(+ 2 4 3)')
+        self.assertEqual(9, ret3)
+
+    def testNSub(self):
+        ret1 = run_code_to_int('(- -4)')
+        self.assertEqual(4, ret1)
+        ret2 = run_code_to_int('(- 5 2)')
+        self.assertEqual(3, ret2)
+        ret3 = run_code_to_int('(- 10 7 1)')
+        self.assertEqual(2, ret3)
 
 
 if __name__ == '__main__':

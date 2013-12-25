@@ -308,12 +308,18 @@ def codegen(aparse, ci):
         return (cmpval, TYPE_CMP)
     elif lookup_math(aparse[0]): 
         op = lookup_math(aparse[0])
-        (a1, v1type) = codegen(aparse[1], ci)
-        (a2, v2type) = codegen(aparse[2], ci)
-        a1 = norm_to_int(a1, v1type, ci)
-        a2 = norm_to_int(a2, v2type, ci)
-        mathres = getattr(ci.builder, op)(a1, a2, "intmathop")
-        return box_val(mathres, TYPE_INT, ci)
+        args = []
+        for a in aparse[1:]:
+            arg, argtype = codegen(a, ci)
+            args.append(norm_to_int(arg, argtype, ci))
+        res = lookup_math_id(op)
+        # Subtraction is special. (- 3) = -3; (- 5 1) = 4.
+        if op == 'sub' and len(args) > 1:
+            res = getattr(ci.builder, op)(args[0], args[1], "intmathop")
+            args = args[2:]
+        for i in range(len(args)):
+            res = getattr(ci.builder, op)(res, args[i], "intmathop")
+        return box_val(res, TYPE_INT, ci)
     elif lookup_module(aparse[0], ci.module):
         f = lookup_module(aparse[0], ci.module)
         args = []
@@ -346,6 +352,14 @@ def norm_to_int(val, vtype, ci):
     else:
         assert vtype == TYPE_INT
     return normed
+
+
+# +/- 0 is the same number; so is * 1.
+def lookup_math_id(op):
+    print "op is %s" % op
+    if op in ['add', 'sub']:
+        return llvm.core.Constant.int(lint, 0)
+    return llvm.core.Constant.int(lint, 1)
 
 
 def compile_line(aparse):
