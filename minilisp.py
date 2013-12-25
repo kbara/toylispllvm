@@ -297,11 +297,14 @@ def codegen(aparse, ci):
         return make_lambda(f_desc_reg, num_args, ci)
     elif lookup_icmp(aparse[0]): # It's an integer comparison
         icmp_cmp = lookup_icmp(aparse[0])
-        (a1, v1type) = codegen(aparse[1], ci)
-        (a2, v2type) = codegen(aparse[2], ci)
-        a1 = norm_to_int(a1, v1type, ci)
-        a2 = norm_to_int(a2, v2type, ci)
-        cmpval = ci.builder.icmp(icmp_cmp, a1, a2, 'cmptmp')
+        args = []
+        for a in aparse[1:]:
+            arg, argtype = codegen(a, ci)
+            args.append(norm_to_int(arg, argtype, ci))
+        cmpval = llvm.core.Constant.int(llvm.core.Type.int(1), 1) # true
+        for i in range(len(args) - 1):
+            curval = ci.builder.icmp(icmp_cmp, args[i], args[i+1], 'cmptmp')
+            cmpval = ci.builder.and_(cmpval, curval)
         return (cmpval, TYPE_CMP)
     elif lookup_math(aparse[0]): 
         op = lookup_math(aparse[0])

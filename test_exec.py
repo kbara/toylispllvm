@@ -117,6 +117,15 @@ class TestLispFunctions(unittest.TestCase):
     def testDefineFunc(self):
         self.assertEqual(7, run_code_to_int('(begin (define (atestf y z) (+ y z)) (atestf 3 4))'))
 
+    def testNCmp(self):
+        ret1 = 1 & run_unboxed_code_to_int('(< 2)')
+        self.assertEqual(1, ret1)
+        ret2 = 1 & run_unboxed_code_to_int('(< 2 3 4)')
+        self.assertEqual(1, ret2)
+        ret3 = 1 & run_unboxed_code_to_int('(< 2 4 3)')
+        self.assertEqual(0, ret3)
+
+
 if __name__ == '__main__':
     unittest.main()
 
