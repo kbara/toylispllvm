@@ -196,7 +196,14 @@ def codegen(aparse, ci):
             return (ci.builder.load(ci.env[aparse]), TYPE_BOX) # FIXME_t
         else:
             raise ValueError("unhandled atom")
-
+    elif aparse[0] == 'apply':
+        op, opt = codegen(aparse[1], ci)
+        arglist, alt = codegen(aparse[2], ci)
+        num_args = llvm.core.Constant.int(lint, 0) # FIXME
+        ap = ci.module.get_function_named("apply")
+        print "dir(op): %s" % dir(op)
+        print "meta: %s" % op.get_metadata.__doc__
+        return (ci.builder.call(ap, [op, num_args, arglist]), TYPE_BOX) #FIXME_t
     elif aparse[0] in ['box', 'add_boxed', 'gifb']:
         return codegen_boxed(aparse, ci)
     elif aparse[0] == 'cons':
@@ -395,7 +402,8 @@ def add_runtime_functions(to_module):
     to_module.add_function(llvm.core.Type.function(fvp, [llvm.core.Type.pointer(fvp), lint]), "make_lambda")
     to_module.add_function(llvm.core.Type.function(lint, [fvp]), "lambda_num_args")
     to_module.add_function(llvm.core.Type.function(fvp, [fvp]), "lambda_get_fp")
-
+    to_module.add_function(llvm.core.Type.function(fvp, #[llvm.core.Type.pointer(fvp),\ 
+        [fvp, lint, fvp]), "apply")
 
 def lookup_icmp(cmp_op):
     lc = llvm.core

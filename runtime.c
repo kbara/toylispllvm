@@ -16,6 +16,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -87,6 +88,36 @@ void* tail(struct cons* alist) {
 	assert(alist != NULL);
 	assert(alist->data_type == CONS_TYPE);
 	return alist->cdr;
+}
+
+void* nth(struct cons* alist, int n){
+        assert(alist != NULL);
+        assert(alist->data_type == CONS_TYPE);
+        if (n <= 0) return head(alist);
+	return nth(tail(alist), n - 1);
+}
+
+int length(struct cons* alist) {
+	if (alist == NULL) return 0;
+	return 1 + length(tail(alist));
+}
+
+void* apply0(void* (*f)(void)) {
+        return f();
+}
+
+
+void* apply(struct lambda *l, int num_args, struct cons* args) {
+	void *fp = l->function_ptr;
+	assert(num_args == length(args)); /* FIXME: make this more graceful */
+	printf("fp: %p, num_args: %i, args: %p\n", fp, num_args, args);
+	switch (num_args) {
+	case 0:
+		apply0(fp);
+		break;
+	default:
+		printf("Unimplemented: apply's list is too long\n");
+	}
 }
 
 /* Convenience, for testing; arguably, it should check it's TYPE_INT */

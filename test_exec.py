@@ -125,7 +125,6 @@ class TestLispFunctions(unittest.TestCase):
         ret3 = 1 & run_unboxed_code_to_int('(< 2 4 3)')
         self.assertEqual(0, ret3)
 
-
     def testNAdd(self):
         ret1 = run_code_to_int('(+)')
         self.assertEqual(0, ret1)
@@ -141,6 +140,14 @@ class TestLispFunctions(unittest.TestCase):
         self.assertEqual(3, ret2)
         ret3 = run_code_to_int('(- 10 7 1)')
         self.assertEqual(2, ret3)
+
+    def testApply0(self):
+        code = "(apply (lambda () 3) 'nil)"
+        self.assertEqual(3, run_code_to_int(code))
+
+    def _testApply(self):
+        code = "(apply add_boxed (cons 1 (cons 2 'nil))))"
+        self.assertEqual(6, run_code_to_int(code))
 
 
 if __name__ == '__main__':

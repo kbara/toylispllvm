@@ -55,6 +55,7 @@ void* lambda_get_fp(struct lambda *alambda);
 struct cons* cons(struct box *val, struct cons *next);
 void* head(struct cons* alist);
 void* tail(struct cons* alist);
+void* nth(struct cons* alist, int n);
 
 /* Convenience, for testing; arguably, it should check it's TYPE_INT */
 int get_int_from_box(struct box* abox);
